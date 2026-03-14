@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { cn } from "@/lib/utils";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 const LAYOUTS = [
   { id: "hero", name: "Hero + Cards", desc: "Bold banner with feature grid" },
@@ -19,7 +20,7 @@ interface CanvasBlock {
 
 const BuilderPanel = () => {
   const ws = useWorkspace();
-  const [tab, setTab] = useState<"layouts" | "edit" | "preview">("layouts");
+  const [showLayoutPicker, setShowLayoutPicker] = useState(!ws.layout);
   const [blocks, setBlocks] = useState<CanvasBlock[]>([]);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -59,7 +60,7 @@ const BuilderPanel = () => {
     };
 
     setBlocks(layoutBlocks[layoutId] || layoutBlocks.hero);
-    setTab("edit");
+    setShowLayoutPicker(false);
     ws.setActiveAgent(null);
   };
 
@@ -99,31 +100,16 @@ const BuilderPanel = () => {
     return html;
   }, [blocks, ws.currentBrief]);
 
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
-      {/* Tabs */}
-      <div className="bg-card border-b border-border flex items-center px-4 flex-shrink-0">
-        {(["layouts", "edit", "preview"] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => { setTab(t); if (t === "preview" && iframeRef.current) iframeRef.current.srcdoc = generatePreviewHtml(); }}
-            className={cn(
-              "px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-all capitalize",
-              tab === t ? "text-pf-dark border-primary" : "text-muted-foreground border-transparent hover:text-primary"
-            )}
-          >
-            {t === "layouts" ? "Layouts" : t === "edit" ? "Edit Content" : "Preview"}
-          </button>
-        ))}
-        <div className="ml-auto flex gap-1.5 items-center">
+  // Layout picker overlay
+  if (showLayoutPicker) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
+        <div className="bg-card border-b border-border px-5 py-2.5 flex items-center gap-3 flex-shrink-0">
+          <span className="text-[13px] font-semibold text-pf-dark flex-1">Choose Layout</span>
           <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-success/25 bg-success-light text-success">
             Agent 3 · Auto-layout
           </span>
         </div>
-      </div>
-
-      {/* Layout picker */}
-      {tab === "layouts" && (
         <div className="flex-1 overflow-y-auto p-5">
           <div className="text-sm font-semibold text-foreground mb-4">Choose a layout — content auto-populates from your brief</div>
           <div className="grid grid-cols-3 gap-3">
@@ -154,59 +140,85 @@ const BuilderPanel = () => {
             ))}
           </div>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* Edit content */}
-      {tab === "edit" && (
-        <div className="flex-1 overflow-y-auto p-6 bg-card">
-          {blocks.map((blk, bi) => (
-            <div key={blk.id} className="border-b border-border pb-4 mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-1 h-4 rounded bg-primary" />
-                <span className="text-sm font-bold text-foreground">{blk.name}</span>
-              </div>
-              {blk.fields.map((f, fi) => (
-                <div key={fi} className="mb-3">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">{f.label}</label>
-                  <textarea
-                    value={f.value}
-                    onChange={e => updateField(bi, fi, e.target.value)}
-                    className={cn(
-                      "w-full border-[1.5px] border-border rounded-md p-3 text-[15px] leading-[1.8] text-foreground resize-none outline-none bg-secondary hover:border-muted-foreground/30 focus:border-primary focus:bg-card transition-all",
-                      f.heading && "font-serif text-2xl text-pf-dark border-none border-b-2 border-b-primary rounded-none bg-card p-0 pb-2"
-                    )}
-                    rows={f.heading ? 2 : 3}
-                  />
+  // Split screen: Edit left, Preview right
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
+      <div className="bg-card border-b border-border px-4 py-2 flex items-center gap-3 flex-shrink-0">
+        <span className="text-[13px] font-semibold text-pf-dark flex-1">Builder</span>
+        <button
+          onClick={() => setShowLayoutPicker(true)}
+          className="text-xs text-primary font-semibold hover:underline"
+        >
+          Change Layout
+        </button>
+        <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-success/25 bg-success-light text-success">
+          Agent 3 · Auto-layout
+        </span>
+        <button
+          onClick={() => ws.goToStep(3)}
+          className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:bg-pf-dark transition-colors"
+        >
+          Proceed to Review →
+        </button>
+      </div>
+
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* Edit panel */}
+        <ResizablePanel defaultSize={45} minSize={30}>
+          <div className="h-full overflow-y-auto p-5 bg-card">
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/50 mb-3">Edit Content</div>
+            {blocks.map((blk, bi) => (
+              <div key={blk.id} className="border-b border-border pb-4 mb-4 last:border-b-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-1 h-4 rounded bg-primary" />
+                  <span className="text-sm font-bold text-foreground">{blk.name}</span>
                 </div>
-              ))}
-            </div>
-          ))}
-          <div className="flex justify-end mt-2">
-            <button
-              onClick={() => ws.goToStep(4)}
-              className="bg-primary text-primary-foreground rounded-md px-5 py-2 text-sm font-bold hover:bg-pf-dark transition-colors"
-            >
-              Proceed to Review →
-            </button>
+                {blk.fields.map((f, fi) => (
+                  <div key={fi} className="mb-2.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">{f.label}</label>
+                    <textarea
+                      value={f.value}
+                      onChange={e => updateField(bi, fi, e.target.value)}
+                      className={cn(
+                        "w-full border-[1.5px] border-border rounded-md p-2.5 text-[14px] leading-[1.7] text-foreground resize-none outline-none bg-secondary hover:border-muted-foreground/30 focus:border-primary focus:bg-card transition-all",
+                        f.heading && "font-serif text-xl text-pf-dark border-none border-b-2 border-b-primary rounded-none bg-card p-0 pb-2"
+                      )}
+                      rows={f.heading ? 1 : 2}
+                    />
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
-        </div>
-      )}
+        </ResizablePanel>
 
-      {/* Preview */}
-      {tab === "preview" && (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="bg-secondary border-b border-border p-2 flex items-center gap-2 flex-shrink-0">
-            <div className="flex-1 bg-card border border-border rounded-full px-3 py-1 text-[11px] font-mono text-muted-foreground">
-              pfizer-draft.preview/{ws.user?.empNumber || "pfz"}/{(ws.currentBrief?.projectTitle || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36)}
+        <ResizableHandle withHandle />
+
+        {/* Live preview */}
+        <ResizablePanel defaultSize={55} minSize={30}>
+          <div className="h-full flex flex-col bg-secondary">
+            <div className="bg-secondary border-b border-border p-2 flex items-center gap-2 flex-shrink-0">
+              <div className="flex gap-1 mr-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-destructive/40" />
+                <div className="w-2.5 h-2.5 rounded-full bg-warning/40" />
+                <div className="w-2.5 h-2.5 rounded-full bg-success/40" />
+              </div>
+              <div className="flex-1 bg-card border border-border rounded-full px-3 py-1 text-[11px] font-mono text-muted-foreground">
+                pfizer-draft.preview/{ws.user?.empNumber || "pfz"}/{(ws.currentBrief?.projectTitle || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36)}
+              </div>
             </div>
+            <iframe
+              ref={iframeRef}
+              className="flex-1 border-none bg-white"
+              srcDoc={generatePreviewHtml()}
+            />
           </div>
-          <iframe
-            ref={iframeRef}
-            className="flex-1 border-none bg-white"
-            srcDoc={generatePreviewHtml()}
-          />
-        </div>
-      )}
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 };

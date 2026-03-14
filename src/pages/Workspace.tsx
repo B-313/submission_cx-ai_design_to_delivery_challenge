@@ -2,7 +2,6 @@ import { WorkspaceProvider, useWorkspace } from "@/contexts/WorkspaceContext";
 import Header from "@/components/workspace/Header";
 import LeftSidebar from "@/components/workspace/LeftSidebar";
 import RegistrationPanel from "@/components/workspace/RegistrationPanel";
-import PreliminaryPanel from "@/components/workspace/PreliminaryPanel";
 import BriefEditorPanel from "@/components/workspace/BriefEditorPanel";
 import BuilderPanel from "@/components/workspace/BuilderPanel";
 import ReviewPanel from "@/components/workspace/ReviewPanel";
@@ -10,7 +9,6 @@ import SubmitPanel from "@/components/workspace/SubmitPanel";
 
 const PANELS = [
   RegistrationPanel,
-  PreliminaryPanel,
   BriefEditorPanel,
   BuilderPanel,
   ReviewPanel,

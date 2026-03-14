@@ -3,18 +3,16 @@ import { cn } from "@/lib/utils";
 
 const STEPS = [
   { label: "Register", num: 1 },
-  { label: "Preliminary", num: 2 },
-  { label: "Brief", num: 3 },
-  { label: "Builder", num: 4 },
-  { label: "Review", num: 5 },
-  { label: "Submit", num: 6 },
+  { label: "Brief", num: 2 },
+  { label: "Builder", num: 3 },
+  { label: "Review", num: 4 },
+  { label: "Submit", num: 5 },
 ];
 
 const AGENT_LABELS: Record<number, string> = {
-  2: "Agent 1 · PIE",
-  3: "Agent 2 · Brief Gen",
-  4: "Agent 3 · Builder",
-  5: "Agent 4 · Review",
+  1: "Agent 1 · PIE + Agent 2 · Brief",
+  2: "Agent 3 · Builder",
+  3: "Agent 4 · Review",
 };
 
 const LeftSidebar = () => {
@@ -28,7 +26,6 @@ const LeftSidebar = () => {
 
   return (
     <aside className="w-[220px] flex-shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
-      {/* User card */}
       {user && (
         <div className="px-3.5 py-3 border-b border-border">
           <div className="font-serif text-[15px] text-pf-dark">{user.firstName} {user.lastName}</div>
@@ -38,7 +35,6 @@ const LeftSidebar = () => {
         </div>
       )}
 
-      {/* Navigation */}
       <div className="flex-1 p-2.5 overflow-y-auto">
         <div className="text-[10px] font-bold uppercase tracking-[0.09em] text-muted-foreground/50 px-1.5 mb-1.5">Workflow</div>
         {STEPS.map((s, i) => {
@@ -81,7 +77,6 @@ const LeftSidebar = () => {
         })}
       </div>
 
-      {/* Submitted lock */}
       {submitted && (
         <div className="bg-pf-mist border-t border-pf-sky p-3.5">
           <div className="text-xs font-bold text-pf-dark mb-1">Submitted for Review</div>
@@ -92,7 +87,6 @@ const LeftSidebar = () => {
         </div>
       )}
 
-      {/* Notes */}
       <div className="border-t border-border p-2.5 flex-shrink-0">
         <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-1">Notes</div>
         <textarea
