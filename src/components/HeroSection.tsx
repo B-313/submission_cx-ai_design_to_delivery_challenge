@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 
 const HeroSection = () => {
   return (
@@ -46,11 +47,11 @@ const HeroSection = () => {
           transition={{ duration: 0.7, delay: 0.3 }}
           className="flex flex-col sm:flex-row items-center justify-center gap-4"
         >
-          <a href="#techniques" className="px-8 py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-base transition-all hover:shadow-[var(--glow-primary)] hover:scale-105">
+          <Link to="/engine" className="px-8 py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-base transition-all hover:shadow-[var(--glow-primary)] hover:scale-105">
+            Launch Engine
+          </Link>
+          <a href="#techniques" className="px-8 py-3 rounded-lg border border-border text-foreground font-semibold text-base card-hover">
             Explore Techniques
-          </a>
-          <a href="#examples" className="px-8 py-3 rounded-lg border border-border text-foreground font-semibold text-base card-hover">
-            See Examples
           </a>
         </motion.div>
       </div>

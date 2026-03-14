@@ -1,4 +1,5 @@
 import { Terminal } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const Navbar = () => {
   return (
@@ -15,9 +16,9 @@ const Navbar = () => {
           <a href="#principles" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Principles</a>
         </div>
 
-        <a href="#techniques" className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:shadow-[var(--glow-primary)] transition-all">
-          Get Started
-        </a>
+        <Link to="/engine" className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:shadow-[var(--glow-primary)] transition-all">
+          Launch Engine
+        </Link>
       </div>
     </nav>
   );
