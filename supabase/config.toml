@@ -2,3 +2,12 @@ project_id = "aycfssigdpqrziyqqcfo"
 
 [functions.analyze-brief]
 verify_jwt = false
+
+[functions.pie-classify]
+verify_jwt = false
+
+[functions.generate-brief]
+verify_jwt = false
+
+[functions.review-content]
+verify_jwt = false
