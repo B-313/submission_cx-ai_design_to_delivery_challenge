@@ -9,7 +9,7 @@ const ReviewPanel = () => {
   const ws = useWorkspace();
 
   useEffect(() => {
-    if (ws.step === 4 && !ws.reviewData && !ws.loading) {
+    if (ws.step === 3 && !ws.reviewData && !ws.loading) {
       runReview();
     }
   }, [ws.step]);
@@ -81,7 +81,6 @@ const ReviewPanel = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {/* Score ring + breakdown */}
         <div className="flex items-center gap-5 bg-card border border-border rounded-lg p-5 shadow-pf">
           <div className="relative w-20 h-20 flex-shrink-0">
             <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
@@ -117,7 +116,6 @@ const ReviewPanel = () => {
           </div>
         </div>
 
-        {/* Issues */}
         {[
           { title: "Compliance Issues", issues: review.complianceIssues },
           { title: "Grammar Issues", issues: review.grammarIssues },
@@ -188,7 +186,6 @@ const ReviewPanel = () => {
           </div>
         ))}
 
-        {/* Threshold warning */}
         {score < 90 && (
           <div className="bg-destructive/5 border-[1.5px] border-destructive/25 rounded-lg p-4 text-[13px] text-destructive font-semibold">
             Score is below 90% threshold. Review and accept recommendations above, then re-run to improve.
@@ -200,7 +197,7 @@ const ReviewPanel = () => {
             Re-run Review
           </button>
           <button
-            onClick={() => ws.goToStep(5)}
+            onClick={() => ws.goToStep(4)}
             disabled={!allDecided}
             className="bg-btn-gradient text-primary-foreground rounded-md px-5 py-2 text-sm font-bold shadow-pf disabled:opacity-40 disabled:cursor-not-allowed"
           >
