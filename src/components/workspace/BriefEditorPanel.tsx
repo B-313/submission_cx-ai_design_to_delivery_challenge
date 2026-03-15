@@ -1,85 +1,125 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import BriefAccordion from "./BriefAccordion";
 import type { BriefData, PIEResult } from "@/contexts/WorkspaceContext";
-import { Upload, FileText, X, Send, SkipForward, Check, ChevronRight, AlertTriangle, Sparkles } from "lucide-react";
+import { Upload, FileText, X, Send, Check, ChevronRight, AlertTriangle } from "lucide-react";
 
-/* ── Lego-style question blocks ── */
+/* ── Step-by-step brief intake questions ── */
 const QUESTIONS: {
   key: string;
+  label: string;
   question: string;
   subtitle?: string;
   options?: string[];
-  multiSelect?: boolean;
   freeText?: boolean;
   placeholder?: string;
+  optional?: boolean;
+  rows?: number;
 }[] = [
   {
-    key: "buildType",
-    question: "What are you building?",
-    subtitle: "Pick the format that best describes your project",
-    options: ["Website", "Webpage", "Landing Page", "Microsite", "Campaign Hub", "Portal"],
+    key: "pageSection",
+    label: "Page or section",
+    question: "What exact page or section are you creating?",
+    subtitle: "Example: HCP product information page - Key Benefits section",
+    freeText: true,
+    rows: 3,
+    placeholder: "Patient diabetes education landing\nPricing and access page for UK",
   },
   {
     key: "audience",
-    question: "Who is the target audience?",
-    subtitle: "Select all that apply",
-    options: ["Patients", "Healthcare Providers (HCPs)", "Channel Partners", "Internal Teams", "Caregivers", "General Public"],
-    multiSelect: true,
+    label: "Primary audience",
+    question: "Who is the primary audience?",
+    subtitle: "Drives Audience Detector",
+    options: ["Patients", "Healthcare Providers (HCPs)", "Internal teams", "Channel partners", "Other"],
+  },
+  {
+    key: "audienceDetail",
+    label: "Audience detail",
+    question: "Any audience specifics to add?",
+    subtitle: "Optional free text (for segment nuances)",
+    freeText: true,
+    optional: true,
+    placeholder: "Example: Newly diagnosed patients in NHS clinics",
   },
   {
     key: "country",
-    question: "Country or region?",
-    subtitle: "Where will this content be published?",
-    options: ["United States", "United Kingdom", "EU", "Global", "Japan", "Australia"],
+    label: "Country or market",
+    question: "Which country or market is this page for?",
+    subtitle: "Drives Jurisdiction Detector",
+    freeText: true,
+    placeholder: "Germany, United Kingdom, Global, USA, Australia",
   },
   {
-    key: "purpose",
-    question: "What's the website's main purpose?",
-    subtitle: "This shapes the overall content strategy",
-    options: ["Inform", "Educate", "Sell / Promote", "Recruit", "Support", "Raise Awareness"],
+    key: "primaryGoal",
+    label: "Primary goal",
+    question: "What is the #1 goal of this page?",
+    subtitle: "Helps the LLM set CTA and conversion focus",
+    freeText: true,
+    placeholder: "Book a consultation, Download patient guide, Request sample, Learn treatment options",
   },
   {
-    key: "goals",
-    question: "Specific goals?",
-    subtitle: "Select all that apply",
-    options: ["Generate leads", "Drive downloads", "Raise awareness", "Provide support", "Collect registrations", "Share clinical data"],
-    multiSelect: true,
+    key: "heroMessage",
+    label: "Most important message",
+    question: "What is the single most important message we must communicate?",
+    subtitle: "Use one clear sentence - this becomes the hero proposition",
+    freeText: true,
+    rows: 3,
+    placeholder: "One-sentence core message",
   },
   {
-    key: "readingLevel",
-    question: "Reading level?",
-    subtitle: "Match complexity to your audience",
-    options: ["Simple (patients / public)", "Technical (HCPs / clinical)", "Business professional", "Internal corporate"],
+    key: "productMentioned",
+    label: "Specific product or therapy",
+    question: "Are you talking about a specific product, drug, or therapy?",
+    subtitle: "Helps trigger Content Risk Scorer",
+    options: ["Yes", "No"],
+  },
+  {
+    key: "productName",
+    label: "Product or therapy name",
+    question: "What is the product, drug, or therapy name?",
+    subtitle: "Example: New oncology drug XYZ-123",
+    freeText: true,
+    placeholder: "Enter exact product or therapy name",
   },
   {
     key: "keyMessages",
-    question: "Key messages to communicate?",
-    subtitle: "What should visitors take away? Type each on a new line or separate with commas.",
+    label: "Key points and benefits",
+    question: "List the 3-5 key points or benefits that must be covered",
+    subtitle: "This is the heart of the content",
     freeText: true,
-    placeholder: "e.g. Evidence-based efficacy\nPatient-centred care\nInnovative science",
+    rows: 6,
+    placeholder: "What is the exact page or section being created / updated?\nWhat is the primary goal / desired visitor action on this page?\n- Key point 1\n- Key point 2\n- Key point 3",
   },
   {
-    key: "existingContent",
-    question: "Any existing content or documents?",
-    subtitle: "Upload files above or describe what you have",
-    options: ["Yes, uploaded files", "Yes, I'll paste content", "No, starting fresh"],
+    key: "approvedCopy",
+    label: "Approved headlines, quotes, disclaimers, or metrics",
+    question: "Do you have any existing approved headlines, quotes, disclaimers, or metrics we must use?",
+    subtitle: "Paste here if not already uploaded",
+    freeText: true,
+    optional: true,
+    rows: 6,
+    placeholder: "Paste approved language, legal lines, claims, and metrics",
   },
 ];
 
 type QAnswers = Record<string, string | string[]>;
 
+const hasValue = (val: string | string[] | undefined) => {
+  if (Array.isArray(val)) return val.length > 0;
+  return typeof val === "string" ? val.trim().length > 0 : false;
+};
+
 const BriefEditorPanel = () => {
   const ws = useWorkspace();
   const [prompt, setPrompt] = useState("");
-  const [phase, setPhase] = useState<"input" | "questions" | "checking" | "brief" | "reviewing">("input");
-  const [qIdx, setQIdx] = useState(0);
+  const [phase, setPhase] = useState<"input" | "questions" | "checking" | "brief">("input");
+  const [questionQueue, setQuestionQueue] = useState<number[]>([]);
+  const [qPos, setQPos] = useState(0);
   const [answers, setAnswers] = useState<QAnswers>({});
   const [freeAnswer, setFreeAnswer] = useState("");
-  const [multiSelected, setMultiSelected] = useState<string[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<{ name: string; content: string }[]>([]);
   const [censorWarning, setCensorWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -100,69 +140,113 @@ const BriefEditorPanel = () => {
 
   const removeFile = (idx: number) => setUploadedFiles(prev => prev.filter((_, i) => i !== idx));
 
+  const getSeedAnswers = (): QAnswers => ({
+    ...(ws.prelim.audience ? { audience: ws.prelim.audience } : {}),
+    ...(ws.user?.country ? { country: ws.user.country } : {}),
+  });
+
+  const getMissingQuestionQueue = (seed: QAnswers) =>
+    QUESTIONS
+      .map((q, idx) => ({ q, idx }))
+      .filter(({ q }) => {
+        if (q.key === "productName") return seed.productMentioned === "Yes";
+        return true;
+      })
+      .filter(({ q }) => !hasValue(seed[q.key]))
+      .map(({ idx }) => idx);
+
   const handleStartQuestions = () => {
     if (!prompt.trim() && uploadedFiles.length === 0) return;
+
+    const seededAnswers = getSeedAnswers();
+    const queue = getMissingQuestionQueue(seededAnswers);
+    setAnswers(seededAnswers);
+
+    if (queue.length === 0) {
+      runCensorCheck(seededAnswers);
+      return;
+    }
+
+    setFreeAnswer("");
+    setQuestionQueue(queue);
+    setQPos(0);
     setPhase("questions");
-    setQIdx(0);
   };
 
   const answerOption = (val: string) => {
-    const q = QUESTIONS[qIdx];
-    if (q.multiSelect) {
-      setMultiSelected(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]);
-    } else {
-      setAnswers(prev => ({ ...prev, [q.key]: val }));
-      advanceQuestion();
+    const q = currentQ;
+    if (!q) return;
+    const nextAnswers = { ...answers, [q.key]: val };
+    if (q.key === "productMentioned" && val === "No") {
+      delete nextAnswers.productName;
     }
-  };
-
-  const confirmMultiSelect = () => {
-    const q = QUESTIONS[qIdx];
-    setAnswers(prev => ({ ...prev, [q.key]: multiSelected }));
-    setMultiSelected([]);
-    advanceQuestion();
+    setAnswers(nextAnswers);
+    advanceQuestion(nextAnswers);
   };
 
   const submitFreeText = () => {
-    const q = QUESTIONS[qIdx];
-    setAnswers(prev => ({ ...prev, [q.key]: freeAnswer }));
+    const q = currentQ;
+    if (!q) return;
+    const trimmed = freeAnswer.trim();
+    if (!q.optional && !trimmed) return;
+    const nextAnswers = { ...answers, [q.key]: trimmed };
+    setAnswers(nextAnswers);
     setFreeAnswer("");
-    advanceQuestion();
+    advanceQuestion(nextAnswers);
   };
 
-  const skipQuestion = () => advanceQuestion();
-
-  const advanceQuestion = () => {
-    if (qIdx < QUESTIONS.length - 1) {
-      setQIdx(qIdx + 1);
+  const advanceQuestion = (nextAnswers: QAnswers = answers) => {
+    if (qPos < questionQueue.length - 1) {
+      setQPos(qPos + 1);
       setFreeAnswer("");
-      setMultiSelected([]);
     } else {
-      runCensorCheck();
+      runCensorCheck(nextAnswers);
     }
   };
 
-  const buildFullPrompt = () => {
+  useEffect(() => {
+    if (!currentQ?.freeText) return;
+    const existing = answers[currentQ.key];
+    setFreeAnswer(typeof existing === "string" ? existing : "");
+  }, [qPos, currentQ?.key]);
+
+  const buildFullPrompt = (answerSet: QAnswers) => {
     const fileContent = uploadedFiles.map(f => `[File: ${f.name}]\n${f.content}`).join("\n\n");
-    const parts = Object.entries(answers).filter(([, v]) => v && (Array.isArray(v) ? v.length : true)).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`);
-    return [prompt, parts.join("\n"), fileContent].filter(Boolean).join("\n\n---\n");
+    const parts = QUESTIONS
+      .filter(q => hasValue(answerSet[q.key]))
+      .map(q => `${q.label}: ${answerSet[q.key] as string}`);
+
+    const classifierContext = [
+      `audience_classifier_input: ${answerSet.audience || ""}`,
+      `jurisdiction_classifier_input: ${answerSet.country || ws.user?.country || ""}`,
+      `risk_classifier_input: ${answerSet.productMentioned === "Yes" ? `Product mentioned - ${answerSet.productName || "unspecified"}` : "No specific product/therapy named"}`,
+      `primary_goal: ${answerSet.primaryGoal || ""}`,
+      `hero_proposition: ${answerSet.heroMessage || ""}`,
+    ];
+
+    return [prompt, parts.join("\n"), classifierContext.join("\n"), fileContent].filter(Boolean).join("\n\n---\n");
   };
 
   /* ── Silent censorship check (PIE) ── */
-  const runCensorCheck = async () => {
+  const runCensorCheck = async (answerSet: QAnswers = answers) => {
     setPhase("checking");
     ws.setLoading(true);
     setCensorWarning(null);
 
     try {
-      const fullPrompt = buildFullPrompt();
-      const audience = Array.isArray(answers.audience) ? answers.audience[0] : (answers.audience as string) || "";
+      const fullPrompt = buildFullPrompt(answerSet);
+      const audience = (answerSet.audience as string) || "";
+      const buildType = (answerSet.pageSection as string)?.toLowerCase().includes("landing")
+        ? "Landing Page"
+        : (answerSet.pageSection as string)?.toLowerCase().includes("microsite")
+          ? "Microsite"
+          : "Webpage";
       const { data, error } = await supabase.functions.invoke("pie-classify", {
         body: {
           brief: fullPrompt,
-          country: (answers.country as string) || ws.user?.country || "",
+          country: (answerSet.country as string) || ws.user?.country || "",
           audience,
-          buildType: (answers.buildType as string) || "",
+          buildType,
         },
       });
       if (error) throw new Error(error.message);
@@ -170,10 +254,10 @@ const BriefEditorPanel = () => {
 
       const pieResult = data as PIEResult;
       ws.setPieResult(pieResult);
-      ws.setPrelim({ buildType: (answers.buildType as string) || null, audience: audience || null });
+      ws.setPrelim({ buildType, audience: audience || null });
 
-      // Check for censorship flags
-      if (pieResult.risk.level === "HIGH" || pieResult.pie_score < 50) {
+      // Only block on severe high-risk results. Lower scores continue with guidance.
+      if (pieResult.risk.level === "HIGH" && pieResult.risk.risk_score >= 0.85) {
         setCensorWarning(
           pieResult.risk.triggers.length > 0
             ? `Content flagged: "${pieResult.risk.triggers.slice(0, 3).join('", "')}" detected. Please revise your input.`
@@ -182,8 +266,11 @@ const BriefEditorPanel = () => {
         toast.warning("Content flagged — please revise your prompt", { duration: 5000 });
         setPhase("input");
       } else {
+        if (pieResult.pie_score < 50 || pieResult.risk.level === "HIGH") {
+          toast.warning("Brief generated with caution flags. Please run Final Check before submit.");
+        }
         // Passed — generate brief silently
-        await generateBrief(pieResult);
+        await generateBrief(pieResult, answerSet);
       }
     } catch (err: any) {
       toast.error(err.message || "Check failed");
@@ -194,15 +281,15 @@ const BriefEditorPanel = () => {
   };
 
   /* ── Generate structured brief ── */
-  const generateBrief = async (pieResult: PIEResult) => {
+  const generateBrief = async (pieResult: PIEResult, answerSet: QAnswers = answers) => {
     ws.setActiveAgent(2);
     try {
       const { data, error } = await supabase.functions.invoke("generate-brief", {
         body: {
           enrichedPrompt: pieResult.enriched_prompt,
-          buildType: (answers.buildType as string) || ws.prelim.buildType,
-          audience: Array.isArray(answers.audience) ? answers.audience[0] : (answers.audience as string) || ws.prelim.audience,
-          country: (answers.country as string) || ws.user?.country,
+          buildType: ws.prelim.buildType,
+          audience: (answerSet.audience as string) || ws.prelim.audience,
+          country: (answerSet.country as string) || ws.user?.country,
         },
       });
       if (error) throw new Error(error.message);
@@ -212,6 +299,7 @@ const BriefEditorPanel = () => {
       ws.addBriefVersion(prompt, brief);
       setPhase("brief");
       toast.success("Your brief is ready — review and approve");
+      void runBackgroundReview(brief, answerSet);
     } catch (err: any) {
       toast.error(err.message || "Brief generation failed");
       setPhase("input");
@@ -220,69 +308,66 @@ const BriefEditorPanel = () => {
     }
   };
 
-  /* ── AI Review after approval ── */
-  const handleApproveBrief = async () => {
-    setPhase("reviewing");
-    ws.setLoading(true);
-    ws.setActiveAgent(4);
+  const runBackgroundReview = async (brief: BriefData, answerSet: QAnswers) => {
     try {
+      const audience = (answerSet.audience as string) || ws.prelim.audience;
       const { data, error } = await supabase.functions.invoke("review-content", {
         body: {
-          brief: ws.currentBrief,
-          buildType: ws.prelim.buildType,
-          audience: ws.prelim.audience,
-          country: ws.user?.country,
+          brief,
+          buildType: (answerSet.buildType as string) || ws.prelim.buildType,
+          audience,
+          country: (answerSet.country as string) || ws.user?.country,
         },
       });
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
+      if (error || data?.error) return;
       ws.setReviewData(data);
-      ws.approvePie();
-      toast.success("AI review complete — choose your design");
-      ws.goToStep(2); // → Design step
-    } catch (err: any) {
-      toast.error(err.message || "Review failed");
-      setPhase("brief");
-    } finally {
-      ws.setLoading(false);
-      ws.setActiveAgent(null);
+    } catch {
+      // Review is optional here; final quality gate remains in Builder Final Check.
     }
   };
 
-  const currentQ = QUESTIONS[qIdx];
-  const answeredCount = Object.keys(answers).length;
-  const progressPct = phase === "questions" ? ((qIdx + 1) / QUESTIONS.length) * 100 : phase === "brief" ? 100 : 0;
+  const handleApproveBrief = () => {
+    ws.approvePie();
+    toast.success("Brief approved — choose your design");
+    ws.goToStep(2);
+  };
+
+  const currentQuestionIndex = questionQueue[qPos] ?? 0;
+  const currentQ = QUESTIONS[currentQuestionIndex];
+  const progressPct = phase === "questions"
+    ? ((qPos + 1) / Math.max(1, questionQueue.length)) * 100
+    : phase === "brief"
+      ? 100
+      : 0;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
       {/* Top bar */}
       <div className="bg-card border-b border-border px-5 py-2 flex items-center gap-2.5 flex-shrink-0">
-        <div className="text-[13px] font-semibold text-pf-dark flex-1">Brief Builder</div>
+        <div className="text-[13px] font-semibold text-pf-dark flex-1">Type Brief</div>
         {phase === "brief" && (
           <button
             onClick={handleApproveBrief}
             className="bg-success text-success-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
           >
-            <Check className="w-3 h-3" /> Approve Brief →
+            <Check className="w-3 h-3" /> Approve & Continue →
           </button>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-card">
-        {/* ── Phase: Input ── */}
-        {phase === "input" && (
-          <div className="py-8 px-6 max-w-2xl mx-auto">
-            <h3 className="font-serif text-xl text-pf-dark mb-1">Describe your project</h3>
-            <p className="text-[13px] text-muted-foreground mb-5">
-              Tell us what you want to build. We'll guide you through a few quick questions to create a complete brief.
-            </p>
+                          isSelected
+                            ? "bg-primary border-primary text-primary-foreground shadow-sm"
+                            : "bg-card border-border text-foreground hover:border-primary hover:text-primary"
+                        )}
+                      >
+                        {isSelected && <Check className="w-3 h-3 inline mr-1.5" />}
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
-            {/* Censor warning */}
-            {censorWarning && (
-              <div className="bg-destructive/8 border-[1.5px] border-destructive/30 rounded-lg p-3.5 mb-4 flex items-start gap-2.5 animate-fade-up">
-                <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-xs font-bold text-destructive mb-0.5">Content flagged</div>
                   <div className="text-[12px] text-destructive/80">{censorWarning}</div>
                 </div>
                 <button onClick={() => setCensorWarning(null)} className="ml-auto text-destructive/50 hover:text-destructive"><X className="w-3.5 h-3.5" /></button>
@@ -290,17 +375,18 @@ const BriefEditorPanel = () => {
             )}
 
             {/* File upload */}
+                    rows={currentQ.rows || 4}
+                  />
+                  <button
+                    onClick={submitFreeText}
+                    disabled={!currentQ.optional && !freeAnswer.trim()}
+                    className="mt-2 bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold disabled:opacity-40 flex items-center gap-1.5"
             <div className="mb-4">
               <div
                 onClick={() => fileInputRef.current?.click()}
                 className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary hover:bg-pf-mist/50 transition-all"
               >
                 <Upload className="w-5 h-5 mx-auto mb-1.5 text-muted-foreground" />
-                <div className="text-xs font-semibold text-muted-foreground">Upload docs / website content</div>
-                <div className="text-[11px] text-muted-foreground/70 mt-0.5">
-                  Existing site content? Paste or upload here. AI will build from your doc.
-                </div>
-              </div>
               <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.html,.csv,.json,.doc,.docx,.pdf" onChange={handleFileUpload} className="hidden" />
               {uploadedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
@@ -320,7 +406,7 @@ const BriefEditorPanel = () => {
               <textarea
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
-                placeholder="Describe what you want to build…"
+                placeholder="Optional: add any extra context before starting the guided form…"
                 className="w-full bg-transparent border-none outline-none text-[13px] text-foreground resize-none min-h-[72px] max-h-[130px] leading-relaxed"
               />
               <div className="flex justify-between items-center">
@@ -329,10 +415,9 @@ const BriefEditorPanel = () => {
                 </span>
                 <button
                   onClick={handleStartQuestions}
-                  disabled={!prompt.trim() && uploadedFiles.length === 0}
                   className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold hover:bg-pf-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                 >
-                  <Send className="w-3 h-3" /> Continue
+                  <Send className="w-3 h-3" /> Start Form
                 </button>
               </div>
             </div>
@@ -348,22 +433,20 @@ const BriefEditorPanel = () => {
           </div>
         )}
 
-        {/* ── Phase: Lego Questions ── */}
+        {/* ── Phase: Guided Questions ── */}
         {phase === "questions" && currentQ && (
-          <div className="py-10 px-6 max-w-lg mx-auto animate-fade-up">
-            {/* Progress bar */}
+          <div className="py-10 px-6 max-w-xl mx-auto animate-fade-up">
             <div className="flex items-center gap-2 mb-8">
               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                 <div className="h-full bg-primary rounded-full transition-all duration-500 ease-out" style={{ width: `${progressPct}%` }} />
               </div>
-              <span className="text-[11px] font-bold text-muted-foreground">{qIdx + 1}/{QUESTIONS.length}</span>
+              <span className="text-[11px] font-bold text-muted-foreground">{qPos + 1}/{questionQueue.length}</span>
             </div>
 
-            {/* Question card */}
             <div className="bg-card border border-border rounded-xl p-6 shadow-pf mb-4">
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-extrabold flex items-center justify-center">
-                  {qIdx + 1}
+                  {qPos + 1}
                 </div>
                 <h3 className="font-serif text-lg text-pf-dark">{currentQ.question}</h3>
               </div>
@@ -371,13 +454,10 @@ const BriefEditorPanel = () => {
                 <p className="text-[12px] text-muted-foreground ml-9 mb-4">{currentQ.subtitle}</p>
               )}
 
-              {/* Options (chips) */}
               {currentQ.options && (
-                <div className="flex flex-wrap gap-2 mb-4 ml-9">
+                <div className="flex flex-wrap gap-2 mb-2 ml-9">
                   {currentQ.options.map(opt => {
-                    const isSelected = currentQ.multiSelect
-                      ? multiSelected.includes(opt)
-                      : answers[currentQ.key] === opt;
+                    const isSelected = answers[currentQ.key] === opt;
                     return (
                       <button
                         key={opt}
@@ -397,30 +477,18 @@ const BriefEditorPanel = () => {
                 </div>
               )}
 
-              {/* Multi-select confirm */}
-              {currentQ.multiSelect && multiSelected.length > 0 && (
-                <div className="ml-9">
-                  <button
-                    onClick={confirmMultiSelect}
-                    className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold flex items-center gap-1.5"
-                  >
-                    Confirm ({multiSelected.length} selected) <ChevronRight className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-
-              {/* Free text */}
               {currentQ.freeText && (
                 <div className="ml-9">
                   <textarea
                     value={freeAnswer}
                     onChange={e => setFreeAnswer(e.target.value)}
-                    placeholder={currentQ.placeholder || "Type your answer…"}
+                    placeholder={currentQ.placeholder || "Type your answer..."}
                     className="w-full bg-secondary border-[1.5px] border-border rounded-lg p-3 text-sm text-foreground resize-none min-h-[80px] outline-none focus:border-primary transition-colors"
+                    rows={currentQ.rows || 4}
                   />
                   <button
                     onClick={submitFreeText}
-                    disabled={!freeAnswer.trim()}
+                    disabled={!currentQ.optional && !freeAnswer.trim()}
                     className="mt-2 bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold disabled:opacity-40 flex items-center gap-1.5"
                   >
                     Next <ChevronRight className="w-3 h-3" />
@@ -428,11 +496,6 @@ const BriefEditorPanel = () => {
                 </div>
               )}
             </div>
-
-            {/* Skip */}
-            <button onClick={skipQuestion} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mx-auto">
-              <SkipForward className="w-3 h-3" /> Skip this question
-            </button>
           </div>
         )}
 
@@ -449,21 +512,6 @@ const BriefEditorPanel = () => {
                 <div>
                   <div className="text-sm text-pf-dark font-semibold">Preparing your brief…</div>
                   <div className="text-[11px] text-muted-foreground">Checking content quality and generating structure</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Phase: Reviewing (after approve) ── */}
-        {phase === "reviewing" && (
-          <div className="flex-1 flex items-center justify-center py-20">
-            <div className="text-center animate-fade-up">
-              <div className="inline-flex items-center gap-3 bg-pf-mist border border-pf-sky rounded-xl px-6 py-5 shadow-pf">
-                <Sparkles className="w-5 h-5 text-primary animate-pulse" />
-                <div>
-                  <div className="text-sm text-pf-dark font-semibold">AI is reviewing your brief…</div>
-                  <div className="text-[11px] text-muted-foreground">Checking compliance, grammar, and brand voice</div>
                 </div>
               </div>
             </div>

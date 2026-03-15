@@ -69,12 +69,12 @@ const ReviewPanel = () => {
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
       <div className="bg-card border-b border-border px-5 py-2.5 flex items-center gap-3 flex-shrink-0">
         <button
-          onClick={() => ws.goToStep(1)}
+          onClick={() => ws.goToStep(3)}
           className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-primary transition-colors"
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Edit Brief
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to Builder
         </button>
-        <span className="font-serif text-[17px] text-pf-dark flex-1">Final Review</span>
+        <span className="font-serif text-[17px] text-pf-dark flex-1">Review & Remediate</span>
         <span className={cn(
           "px-3.5 py-1 rounded-full text-[13px] font-bold border-[1.5px]",
           score >= 90 ? "bg-success-light border-success/25 text-success" : score >= 70 ? "bg-warning-light border-warning/25 text-warning" : "bg-destructive/10 border-destructive/25 text-destructive"
@@ -188,8 +188,8 @@ const ReviewPanel = () => {
 
         <div className="flex justify-between items-center">
           <div className="flex gap-2">
-            <button onClick={() => ws.goToStep(1)} className="border border-border rounded-md px-4 py-2 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary flex items-center gap-1.5">
-              <ArrowLeft className="w-3 h-3" /> Edit Brief to Retry
+            <button onClick={() => ws.goToStep(3)} className="border border-border rounded-md px-4 py-2 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary flex items-center gap-1.5">
+              <ArrowLeft className="w-3 h-3" /> Back to Builder
             </button>
             <button onClick={runReview} className="border border-border rounded-md px-4 py-2 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary">
               Re-run Review

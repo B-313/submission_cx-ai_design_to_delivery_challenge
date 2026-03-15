@@ -1,39 +1,60 @@
+import { useEffect, useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 
-const STEPS = ["Register", "Brief", "Design", "Builder", "Submit"];
 const PCTS = [0, 20, 45, 65, 100];
 
 const Header = () => {
   const { step, user } = useWorkspace();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!user) return;
+    const tick = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(tick);
+  }, [user]);
+
+  const dateText = new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(now);
+
+  const timeText = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(now);
 
   return (
     <>
-      <header className="h-[52px] flex-shrink-0 bg-header-gradient flex items-center px-5 gap-3.5 shadow-[0_2px_10px_rgba(0,26,77,0.3)] z-50">
-        <span className="font-serif text-[19px] text-white tracking-wide">Pfizer</span>
-        <div className="w-px h-[18px] bg-white/25" />
-        <span className="text-xs font-medium text-white/80 tracking-wider">Design-to-Delivery Accelerator</span>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="bg-white/15 border border-white/20 rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white/90">
+      <header className="h-[68px] flex-shrink-0 bg-header-gradient flex items-center px-5 gap-4 shadow-[0_2px_10px_rgba(0,26,77,0.3)] z-50">
+        <span className="font-serif text-[24px] text-white tracking-wide leading-none">Pfizer</span>
+        <div className="w-px h-[24px] bg-white/25" />
+        <span className="text-[13px] font-medium text-white/85 tracking-wide">Design-to-Delivery Accelerator</span>
+        <div className="ml-auto flex items-center gap-2.5">
+          <span className="bg-white/15 border border-white/20 rounded-full px-3 py-1 text-[12px] font-semibold text-white/90">
             CXI+AI · University of Liverpool
           </span>
           {user && (
-            <div className="flex items-center gap-1.5 bg-white/12 border border-white/20 rounded-full py-1 px-2.5">
-              <div className="w-[26px] h-[26px] rounded-full bg-white/25 text-white text-[10px] font-bold flex items-center justify-center">
+            <div className="flex items-center gap-2.5 bg-white/12 border border-white/20 rounded-full py-1.5 px-3">
+              <div className="w-[34px] h-[34px] rounded-full bg-white/25 text-white text-[12px] font-bold flex items-center justify-center">
                 {(user.firstName[0] + user.lastName[0]).toUpperCase()}
               </div>
-              <span className="text-xs font-semibold text-white/90">{user.firstName}</span>
+              <div className="leading-tight">
+                <div className="text-[13px] font-semibold text-white/95">
+                  Welcome to your workspace {user.firstName}
+                </div>
+                <div className="text-[12px] text-white/80">
+                  {dateText} · {timeText}
+                </div>
+              </div>
             </div>
           )}
         </div>
       </header>
 
       <div className="h-[46px] flex-shrink-0 bg-card border-b border-border flex items-center px-5 gap-1.5 shadow-pf overflow-x-auto">
-        {user && (
-          <>
-            <ProjectPill label="Owner" value={`${user.firstName} ${user.lastName}`} />
-            <ProjectPill label="Region" value={user.country} />
-          </>
-        )}
         <div className="ml-auto flex items-center gap-1.5 flex-shrink-0 pl-3">
           <div className="flex items-center gap-1.5">
             <div className="w-[100px] h-[7px] bg-muted rounded-full overflow-hidden border border-border">
@@ -53,14 +74,5 @@ const Header = () => {
     </>
   );
 };
-
-function ProjectPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-1 px-3 py-1 bg-secondary border border-border rounded-full text-[11px] whitespace-nowrap flex-shrink-0">
-      <span className="font-bold text-muted-foreground uppercase tracking-wider text-[10px]">{label}</span>
-      <span className="font-semibold text-pf-dark">{value}</span>
-    </div>
-  );
-}
 
 export default Header;
