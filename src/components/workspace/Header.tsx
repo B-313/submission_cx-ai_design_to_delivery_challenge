@@ -1,7 +1,7 @@
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 
-const STEPS = ["Register", "Preliminary", "Brief", "Builder", "Review", "Submit"];
-const PCTS = [0, 17, 34, 55, 78, 100];
+const STEPS = ["Register", "Brief", "Builder", "Review", "Submit"];
+const PCTS = [0, 20, 45, 70, 100];
 
 const Header = () => {
   const { step, user } = useWorkspace();
@@ -27,7 +27,6 @@ const Header = () => {
         </div>
       </header>
 
-      {/* Project bar */}
       <div className="h-[46px] flex-shrink-0 bg-card border-b border-border flex items-center px-5 gap-1.5 shadow-pf overflow-x-auto">
         {user && (
           <>

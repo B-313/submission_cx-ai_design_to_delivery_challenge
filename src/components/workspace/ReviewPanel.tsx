@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { ArrowLeft } from "lucide-react";
 
 const ReviewPanel = () => {
   const ws = useWorkspace();
@@ -29,7 +30,7 @@ const ReviewPanel = () => {
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
       ws.setReviewData(data);
-      toast.success("Agent 4 review complete — approve or decline each finding");
+      toast.success("Review complete — approve or decline each finding");
     } catch (err: any) {
       toast.error(err.message || "Review failed");
     } finally {
@@ -56,7 +57,7 @@ const ReviewPanel = () => {
             <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
             <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
           </div>
-          <span className="text-sm text-pf-dark font-medium">Agent 4 running compliance & grammar checks…</span>
+          <span className="text-sm text-pf-dark font-medium">Running compliance & grammar checks…</span>
         </div>
       </div>
     );
@@ -67,11 +68,13 @@ const ReviewPanel = () => {
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
       <div className="bg-card border-b border-border px-5 py-2.5 flex items-center gap-3 flex-shrink-0">
+        <button
+          onClick={() => ws.goToStep(1)}
+          className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-primary transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Edit Brief
+        </button>
         <span className="font-serif text-[17px] text-pf-dark flex-1">Final Review</span>
-        <span className="flex items-center gap-2 bg-pf-mist border border-pf-sky rounded-full px-3 py-1">
-          <span className="w-2 h-2 rounded-full bg-primary" />
-          <span className="text-[11px] font-bold text-pf-dark">AGENT 4 · Review</span>
-        </span>
         <span className={cn(
           "px-3.5 py-1 rounded-full text-[13px] font-bold border-[1.5px]",
           score >= 90 ? "bg-success-light border-success/25 text-success" : score >= 70 ? "bg-warning-light border-warning/25 text-warning" : "bg-destructive/10 border-destructive/25 text-destructive"
@@ -87,8 +90,7 @@ const ReviewPanel = () => {
               <circle cx="60" cy="60" r="54" stroke="hsl(214,20%,85%)" strokeWidth="8" fill="none" />
               <motion.circle cx="60" cy="60" r="54" stroke={scoreColor} strokeWidth="8" fill="none" strokeLinecap="round"
                 strokeDasharray={circumference} initial={{ strokeDashoffset: circumference }} animate={{ strokeDashoffset: offset }}
-                transition={{ duration: 1, ease: "easeOut" }}
-              />
+                transition={{ duration: 1, ease: "easeOut" }} />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-lg font-bold text-pf-dark">{score}</span>
@@ -126,9 +128,7 @@ const ReviewPanel = () => {
               <span className={cn(
                 "text-[11px] font-bold px-2 py-0.5 rounded-full",
                 section.issues.length === 0 ? "bg-success-light text-success" : "bg-destructive/10 text-destructive"
-              )}>
-                {section.issues.length}
-              </span>
+              )}>{section.issues.length}</span>
             </div>
             <div className="p-4 space-y-3">
               {section.issues.map(issue => {
@@ -146,9 +146,7 @@ const ReviewPanel = () => {
                       <span className={cn(
                         "text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5",
                         issue.severity === "high" ? "bg-destructive/15 text-destructive" : issue.severity === "medium" ? "bg-warning/12 text-warning" : "bg-primary/12 text-primary"
-                      )}>
-                        {issue.severity}
-                      </span>
+                      )}>{issue.severity}</span>
                       <div className="flex-1">
                         <div className="text-xs font-bold text-foreground">{issue.field}</div>
                         <div className="text-[13px] text-muted-foreground mt-0.5">{issue.issue}</div>
@@ -165,13 +163,9 @@ const ReviewPanel = () => {
                       {!decision ? (
                         <div className="flex gap-2">
                           <button onClick={() => ws.setReviewDecision(issue.id, "approved")}
-                            className="flex-1 bg-success text-success-foreground rounded-md py-1.5 text-xs font-bold hover:opacity-90">
-                            Accept
-                          </button>
+                            className="flex-1 bg-success text-success-foreground rounded-md py-1.5 text-xs font-bold hover:opacity-90">Accept</button>
                           <button onClick={() => ws.setReviewDecision(issue.id, "declined")}
-                            className="flex-1 bg-card border border-border rounded-md py-1.5 text-xs font-semibold text-muted-foreground hover:border-foreground hover:text-foreground">
-                            Decline
-                          </button>
+                            className="flex-1 bg-card border border-border rounded-md py-1.5 text-xs font-semibold text-muted-foreground hover:border-foreground hover:text-foreground">Decline</button>
                         </div>
                       ) : (
                         <div className={cn("text-xs font-bold text-center py-1", decision === "approved" ? "text-success" : "text-muted-foreground")}>
@@ -193,9 +187,14 @@ const ReviewPanel = () => {
         )}
 
         <div className="flex justify-between items-center">
-          <button onClick={runReview} className="border border-border rounded-md px-4 py-2 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary">
-            Re-run Review
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => ws.goToStep(1)} className="border border-border rounded-md px-4 py-2 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary flex items-center gap-1.5">
+              <ArrowLeft className="w-3 h-3" /> Edit Brief to Retry
+            </button>
+            <button onClick={runReview} className="border border-border rounded-md px-4 py-2 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary">
+              Re-run Review
+            </button>
+          </div>
           <button
             onClick={() => ws.goToStep(4)}
             disabled={!allDecided}

@@ -9,14 +9,8 @@ const STEPS = [
   { label: "Submit", num: 5 },
 ];
 
-const AGENT_LABELS: Record<number, string> = {
-  1: "Agent 1 · PIE + Agent 2 · Brief",
-  2: "Agent 3 · Builder",
-  3: "Agent 4 · Review",
-};
-
 const LeftSidebar = () => {
-  const { step, maxStep, user, submitted, goToStep, notes, setNotes, activeAgent } = useWorkspace();
+  const { step, maxStep, user, submitted, goToStep, notes, setNotes } = useWorkspace();
 
   const handleNav = (idx: number) => {
     if (submitted) return;
@@ -25,18 +19,18 @@ const LeftSidebar = () => {
   };
 
   return (
-    <aside className="w-[220px] flex-shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
+    <aside className="w-[200px] flex-shrink-0 bg-gradient-to-b from-[hsl(220,60%,15%)] to-[hsl(220,50%,10%)] flex flex-col overflow-hidden">
       {user && (
-        <div className="px-3.5 py-3 border-b border-border">
-          <div className="font-serif text-[15px] text-pf-dark">{user.firstName} {user.lastName}</div>
-          <div className="text-[11px] text-muted-foreground leading-relaxed">
+        <div className="px-3 py-3 border-b border-white/10">
+          <div className="font-serif text-[14px] text-white">{user.firstName} {user.lastName}</div>
+          <div className="text-[10px] text-white/50 leading-relaxed">
             {user.department}<br />{user.empNumber} · {user.country}
           </div>
         </div>
       )}
 
-      <div className="flex-1 p-2.5 overflow-y-auto">
-        <div className="text-[10px] font-bold uppercase tracking-[0.09em] text-muted-foreground/50 px-1.5 mb-1.5">Workflow</div>
+      <div className="flex-1 p-2 overflow-y-auto">
+        <div className="text-[9px] font-bold uppercase tracking-[0.1em] text-white/30 px-1.5 mb-1.5">Workflow</div>
         {STEPS.map((s, i) => {
           const isDone = i < step;
           const isActive = i === step;
@@ -48,52 +42,49 @@ const LeftSidebar = () => {
               onClick={() => handleNav(i)}
               disabled={isLocked || submitted}
               className={cn(
-                "w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-[13px] font-medium transition-all mb-0.5 relative select-none text-left",
-                isActive && "bg-pf-mist text-pf-dark font-semibold",
-                isDone && !isActive && "text-foreground",
-                !isActive && !isDone && !isLocked && "text-muted-foreground hover:bg-secondary hover:text-foreground",
-                isLocked && "opacity-40 cursor-not-allowed"
+                "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[12px] font-medium transition-all mb-0.5 relative select-none text-left",
+                isActive && "bg-white/12 text-white font-semibold",
+                isDone && !isActive && "text-white/70",
+                !isActive && !isDone && !isLocked && "text-white/40 hover:bg-white/8 hover:text-white/70",
+                isLocked && "opacity-25 cursor-not-allowed text-white/30"
               )}
             >
               {isActive && (
-                <div className="absolute left-0 top-[20%] bottom-[20%] w-[3px] rounded-r bg-primary" />
+                <div className="absolute left-0 top-[20%] bottom-[20%] w-[2px] rounded-r bg-primary" />
               )}
               <div
                 className={cn(
-                  "w-5 h-5 rounded-full border-[1.5px] text-[10px] font-extrabold flex items-center justify-center flex-shrink-0 transition-all",
+                  "w-4.5 h-4.5 rounded-full border-[1.5px] text-[9px] font-extrabold flex items-center justify-center flex-shrink-0 transition-all w-[18px] h-[18px]",
                   isActive && "bg-primary border-primary text-primary-foreground",
                   isDone && !isActive && "bg-success border-success text-success-foreground",
-                  !isActive && !isDone && "border-current"
+                  !isActive && !isDone && "border-white/30"
                 )}
               >
                 {isDone && !isActive ? "✓" : s.num}
               </div>
               <span>{s.label}</span>
-              {AGENT_LABELS[i] && isActive && (
-                <span className="ml-auto text-[9px] font-bold text-primary agent-pulse">●</span>
-              )}
             </button>
           );
         })}
       </div>
 
       {submitted && (
-        <div className="bg-pf-mist border-t border-pf-sky p-3.5">
-          <div className="text-xs font-bold text-pf-dark mb-1">Submitted for Review</div>
-          <div className="text-[11px] text-muted-foreground leading-relaxed">
-            Your project is with the IT review team. You will receive an update at:
+        <div className="bg-white/8 border-t border-white/10 p-3">
+          <div className="text-[11px] font-bold text-white mb-1">Submitted</div>
+          <div className="text-[10px] text-white/50 leading-relaxed">
+            Your project is with the IT review team.
           </div>
-          {user && <div className="text-[11px] font-bold text-primary mt-1 break-all">{user.email}</div>}
+          {user && <div className="text-[10px] font-bold text-primary mt-1 break-all">{user.email}</div>}
         </div>
       )}
 
-      <div className="border-t border-border p-2.5 flex-shrink-0">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-1">Notes</div>
+      <div className="border-t border-white/10 p-2 flex-shrink-0">
+        <div className="text-[9px] font-bold uppercase tracking-wider text-white/30 mb-1">Notes</div>
         <textarea
           value={notes}
           onChange={e => setNotes(e.target.value)}
-          placeholder="Jot notes here…"
-          className="w-full h-20 text-[12px] bg-secondary border border-border rounded-md p-2 resize-none outline-none focus:border-primary transition-colors text-foreground"
+          placeholder="Jot notes…"
+          className="w-full h-16 text-[11px] bg-white/8 border border-white/10 rounded-md p-2 resize-none outline-none focus:border-primary transition-colors text-white/70 placeholder:text-white/20"
         />
       </div>
     </aside>

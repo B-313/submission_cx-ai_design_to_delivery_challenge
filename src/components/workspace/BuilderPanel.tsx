@@ -26,7 +26,6 @@ const BuilderPanel = () => {
 
   const handlePickLayout = (layoutId: string) => {
     ws.setLayout(layoutId);
-    ws.setActiveAgent(3);
     const b = ws.currentBrief;
     const t = b?.projectTitle || "Pfizer Page";
     const g = b?.goal || "Delivering impactful digital experiences.";
@@ -45,7 +44,7 @@ const BuilderPanel = () => {
       ],
       cards: [
         { id: "1", name: "Header", fields: [{ label: "Title", value: t, heading: true }, { label: "Intro", value: g }] },
-        ...km.slice(0, 3).map((m, i) => ({ id: String(i + 2), name: `Card ${i + 1}`, fields: [{ label: "Heading", value: m, heading: true }, { label: "Body", value: "Pfizer content auto-populated from your brief." }] })),
+        ...km.slice(0, 3).map((m, i) => ({ id: String(i + 2), name: `Card ${i + 1}`, fields: [{ label: "Heading", value: m, heading: true }, { label: "Body", value: "Content auto-populated from your brief." }] })),
       ],
       split: [
         { id: "1", name: "Left — Content", fields: [{ label: "Headline", value: t, heading: true }, { label: "Description", value: g }] },
@@ -61,7 +60,6 @@ const BuilderPanel = () => {
 
     setBlocks(layoutBlocks[layoutId] || layoutBlocks.hero);
     setShowLayoutPicker(false);
-    ws.setActiveAgent(null);
   };
 
   const updateField = (blockIdx: number, fieldIdx: number, value: string) => {
@@ -100,28 +98,21 @@ const BuilderPanel = () => {
     return html;
   }, [blocks, ws.currentBrief]);
 
-  // Layout picker overlay
   if (showLayoutPicker) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
         <div className="bg-card border-b border-border px-5 py-2.5 flex items-center gap-3 flex-shrink-0">
           <span className="text-[13px] font-semibold text-pf-dark flex-1">Choose Layout</span>
-          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-success/25 bg-success-light text-success">
-            Agent 3 · Auto-layout
-          </span>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           <div className="text-sm font-semibold text-foreground mb-4">Choose a layout — content auto-populates from your brief</div>
           <div className="grid grid-cols-3 gap-3">
             {LAYOUTS.map(l => (
-              <button
-                key={l.id}
-                onClick={() => handlePickLayout(l.id)}
+              <button key={l.id} onClick={() => handlePickLayout(l.id)}
                 className={cn(
                   "bg-card border-2 rounded-lg overflow-hidden transition-all shadow-pf hover:border-primary hover:shadow-pf-md hover:-translate-y-0.5 text-left",
                   ws.layout === l.id ? "border-primary shadow-[0_0_0_3px_hsla(200,100%,41%,0.18)]" : "border-border"
-                )}
-              >
+                )}>
                 <div className="aspect-video bg-secondary p-2 flex flex-col gap-1">
                   <div className="flex-1 bg-gradient-to-br from-pf-dark to-pf-blue rounded flex items-center justify-center">
                     <div className="w-[60%] h-1 bg-white/70 rounded-full" />
@@ -144,30 +135,18 @@ const BuilderPanel = () => {
     );
   }
 
-  // Split screen: Edit left, Preview right
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
       <div className="bg-card border-b border-border px-4 py-2 flex items-center gap-3 flex-shrink-0">
         <span className="text-[13px] font-semibold text-pf-dark flex-1">Builder</span>
-        <button
-          onClick={() => setShowLayoutPicker(true)}
-          className="text-xs text-primary font-semibold hover:underline"
-        >
-          Change Layout
-        </button>
-        <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-success/25 bg-success-light text-success">
-          Agent 3 · Auto-layout
-        </span>
-        <button
-          onClick={() => ws.goToStep(3)}
-          className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:bg-pf-dark transition-colors"
-        >
+        <button onClick={() => setShowLayoutPicker(true)} className="text-xs text-primary font-semibold hover:underline">Change Layout</button>
+        <button onClick={() => ws.goToStep(3)}
+          className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:bg-pf-dark transition-colors">
           Proceed to Review →
         </button>
       </div>
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Edit panel */}
         <ResizablePanel defaultSize={45} minSize={30}>
           <div className="h-full overflow-y-auto p-5 bg-card">
             <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/50 mb-3">Edit Content</div>
@@ -195,10 +174,7 @@ const BuilderPanel = () => {
             ))}
           </div>
         </ResizablePanel>
-
         <ResizableHandle withHandle />
-
-        {/* Live preview */}
         <ResizablePanel defaultSize={55} minSize={30}>
           <div className="h-full flex flex-col bg-secondary">
             <div className="bg-secondary border-b border-border p-2 flex items-center gap-2 flex-shrink-0">
@@ -208,14 +184,10 @@ const BuilderPanel = () => {
                 <div className="w-2.5 h-2.5 rounded-full bg-success/40" />
               </div>
               <div className="flex-1 bg-card border border-border rounded-full px-3 py-1 text-[11px] font-mono text-muted-foreground">
-                pfizer-draft.preview/{ws.user?.empNumber || "pfz"}/{(ws.currentBrief?.projectTitle || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36)}
+                draft-preview/{(ws.currentBrief?.projectTitle || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36)}
               </div>
             </div>
-            <iframe
-              ref={iframeRef}
-              className="flex-1 border-none bg-white"
-              srcDoc={generatePreviewHtml()}
-            />
+            <iframe ref={iframeRef} className="flex-1 border-none bg-white" srcDoc={generatePreviewHtml()} />
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
