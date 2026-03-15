@@ -17,7 +17,7 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const ragChunks = retrievePfizerContext(`${enrichedPrompt}\n${buildType || ""}\n${audience || ""}\n${country || ""}`);
+    const ragChunks = await retrievePfizerContext(`${enrichedPrompt}\n${buildType || ""}\n${audience || ""}\n${country || ""}`);
     const ragContext = formatRagContext(ragChunks);
     const ideationSummary = ideationAnswers ? JSON.stringify(ideationAnswers, null, 2) : "{}";
     const hasUserSources = Array.isArray(sourceContext) && sourceContext.length > 0;

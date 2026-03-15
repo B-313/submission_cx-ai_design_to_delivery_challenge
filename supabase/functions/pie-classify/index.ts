@@ -235,7 +235,7 @@ serve(async (req) => {
     const readability = predictReadability(brief, audienceResult.audience);
     const scoring = calculateScore(audienceResult, risk, tone, readability);
 
-    const ragChunks = retrievePfizerContext(`${brief}\n${buildType || ""}\n${country || ""}\n${audHint || ""}`);
+    const ragChunks = await retrievePfizerContext(`${brief}\n${buildType || ""}\n${country || ""}\n${audHint || ""}`);
     const ragContext = formatRagContext(ragChunks);
 
     const enriched_prompt = buildEnrichedPrompt(brief, audienceResult, jurisdiction, risk, tone, readability, { buildType, country }, ragContext);

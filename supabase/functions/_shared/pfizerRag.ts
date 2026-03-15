@@ -1,3 +1,9 @@
+declare const Deno: {
+  env: {
+    get: (key: string) => string | undefined;
+  };
+};
+
 type RagChunk = {
   id: string;
   source:
@@ -11,6 +17,18 @@ type RagChunk = {
     | "AU TGA Advertising Code 2021"
     | "AU TGA Advertising Approval";
   text: string;
+};
+
+type EmbeddingRow = {
+  id: string;
+  source: RagChunk["source"];
+  text: string;
+  similarity: number;
+};
+
+type EmbeddingRecord = {
+  chunk: RagChunk;
+  embedding: number[];
 };
 
 const CORPUS: RagChunk[] = [
@@ -83,7 +101,121 @@ function jaccardScore(a: Set<string>, b: Set<string>) {
   return union === 0 ? 0 : inter / union;
 }
 
-export function retrievePfizerContext(query: string, topK = 4): RagChunk[] {
+function cosineSimilarity(a: number[], b: number[]) {
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i += 1) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+async function createEmbedding(input: string): Promise<number[] | null> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY || !input?.trim()) return null;
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input,
+      }),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    const embedding = data?.data?.[0]?.embedding;
+    return Array.isArray(embedding) ? embedding : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+let corpusEmbeddingPromise: Promise<EmbeddingRecord[] | null> | null = null;
+
+async function getCorpusEmbeddings(): Promise<EmbeddingRecord[] | null> {
+  if (!corpusEmbeddingPromise) {
+    corpusEmbeddingPromise = (async () => {
+      const records: EmbeddingRecord[] = [];
+      for (const chunk of CORPUS) {
+        const embedding = await createEmbedding(`${chunk.source}\n${chunk.text}`);
+        if (!embedding) return null;
+        records.push({ chunk, embedding });
+      }
+      return records;
+    })();
+  }
+  return corpusEmbeddingPromise;
+}
+
+async function retrieveFromVectorStore(query: string, topK: number): Promise<RagChunk[]> {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return [];
+
+  const embedding = await createEmbedding(query);
+  if (!embedding) return [];
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/match_rag_documents`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query_embedding: embedding,
+        match_count: topK,
+      }),
+    });
+
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) return [];
+
+    return (data as EmbeddingRow[])
+      .filter((row) => typeof row?.text === "string" && row.text.length > 0)
+      .map((row) => ({
+        id: row.id,
+        source: row.source,
+        text: row.text,
+      }));
+  } catch (_) {
+    return [];
+  }
+}
+
+async function retrieveSemanticInMemory(query: string, topK: number): Promise<RagChunk[]> {
+  const queryEmbedding = await createEmbedding(query);
+  if (!queryEmbedding) return [];
+
+  const corpusEmbeddings = await getCorpusEmbeddings();
+  if (!corpusEmbeddings || corpusEmbeddings.length === 0) return [];
+
+  const ranked = corpusEmbeddings
+    .map((record) => ({
+      chunk: record.chunk,
+      score: cosineSimilarity(queryEmbedding, record.embedding),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map((entry) => entry.chunk);
+
+  return ranked;
+}
+
+function retrieveLexicalFallback(query: string, topK: number): RagChunk[] {
   const q = tokenize(query || "");
   const scored = CORPUS.map((chunk) => {
     const score = jaccardScore(q, tokenize(chunk.text));
@@ -94,6 +226,16 @@ export function retrievePfizerContext(query: string, topK = 4): RagChunk[] {
     .map((x) => x.chunk);
 
   return scored.length > 0 ? scored : CORPUS.slice(0, topK);
+}
+
+export async function retrievePfizerContext(query: string, topK = 4): Promise<RagChunk[]> {
+  const vectorStore = await retrieveFromVectorStore(query, topK);
+  if (vectorStore.length > 0) return vectorStore;
+
+  const inMemorySemantic = await retrieveSemanticInMemory(query, topK);
+  if (inMemorySemantic.length > 0) return inMemorySemantic;
+
+  return retrieveLexicalFallback(query, topK);
 }
 
 export function formatRagContext(chunks: RagChunk[]): string {

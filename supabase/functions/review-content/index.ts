@@ -18,7 +18,7 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const briefText = typeof brief === "string" ? brief : Object.entries(brief).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`).join("\n");
-    const ragChunks = retrievePfizerContext(`${briefText}\n${buildType || ""}\n${audience || ""}\n${country || ""}`);
+    const ragChunks = await retrievePfizerContext(`${briefText}\n${buildType || ""}\n${audience || ""}\n${country || ""}`);
     const ragContext = formatRagContext(ragChunks);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
