@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary local extraction artifacts
+.tmp_slides.zip
+.tmp_slides_extract/
+
+# Python cache artifacts
+__pycache__/
+*.pyc

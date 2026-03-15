@@ -1,104 +1,95 @@
-import { useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { cn } from "@/lib/utils";
+import BriefAccordion from "./BriefAccordion";
+import { Check, ChevronLeft } from "lucide-react";
+import { toast } from "sonner";
 
-const BUILD_OPTIONS = [
-  { label: "Website", desc: "Multi-page site with navigation and distinct sections" },
-  { label: "Webpage", desc: "Single page focused on one topic or campaign" },
-  { label: "Landing Page", desc: "Conversion-focused page with a single CTA" },
-  { label: "Microsite", desc: "Small standalone site for a specific initiative" },
-];
+const BRIEF_DRAFT_KEY = "pfizer_brief_editor_draft_v1";
 
-const AUDIENCE_OPTIONS = [
-  { label: "Patients", desc: "General public seeking health information (Grade 7-8 reading)" },
-  { label: "Healthcare Providers", desc: "Doctors, nurses, pharmacists (clinical language OK)" },
-  { label: "Channel Partners", desc: "Distributors, wholesalers (business professional tone)" },
-  { label: "Internal Teams", desc: "Pfizer employees and stakeholders (corporate tone)" },
-];
+const BriefDisplayPanel = () => {
+  const ws = useWorkspace();
+  const { currentBrief, goToStep, approvePie, setCurrentBrief } = ws;
 
-const PreliminaryPanel = () => {
-  const { user, goToStep, setPrelim } = useWorkspace();
-  const [build, setBuild] = useState<string | null>(null);
-  const [audience, setAudience] = useState<string | null>(null);
-
-  const canContinue = build && audience;
-
-  const handleConfirm = () => {
-    if (!canContinue) return;
-    setPrelim({ buildType: build, audience });
-    goToStep(2);
+  const handleApprove = () => {
+    approvePie();
+    localStorage.removeItem(BRIEF_DRAFT_KEY);
+    toast.success("Brief approved — choose your design");
+    goToStep(3);
   };
 
+  if (!currentBrief) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 animate-fade-up">
+        <div className="max-w-md text-center">
+          <p className="text-[13px] text-muted-foreground mb-4">
+            No brief generated yet. Go back to Ideation to create one.
+          </p>
+          <button
+            onClick={() => goToStep(1)}
+            className="flex items-center gap-1.5 mx-auto text-xs font-semibold text-primary hover:text-pf-dark"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" /> Back to Ideation
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-4 animate-fade-up">
-      <div>
-        <h2 className="font-serif text-xl text-pf-dark">
-          Let's set up your project{user ? `, ${user.firstName}` : ""}
-        </h2>
-        <p className="text-[13px] text-muted-foreground">Select your options — these personalise every step.</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChipGroup
-          title="What are you building?"
-          options={BUILD_OPTIONS}
-          selected={build}
-          onSelect={setBuild}
-        />
-        <ChipGroup
-          title="Target Audience"
-          options={AUDIENCE_OPTIONS}
-          selected={audience}
-          onSelect={setAudience}
-        />
-      </div>
-
-      <div className="flex justify-end mt-2">
+    <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
+      {/* Top bar */}
+      <div className="bg-card border-b border-border px-5 py-2 flex items-center gap-2.5 flex-shrink-0">
         <button
-          onClick={handleConfirm}
-          disabled={!canContinue}
-          className="bg-btn-gradient text-primary-foreground rounded-md px-6 py-2.5 text-[13px] font-bold shadow-pf hover:shadow-pf-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={() => goToStep(1)}
+          className="flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-primary mr-2"
         >
-          Confirm & Continue →
+          <ChevronLeft className="w-3.5 h-3.5" /> Back to Ideation
+        </button>
+        <div className="text-[13px] font-semibold text-pf-dark flex-1">Generated Brief</div>
+        <button
+          onClick={handleApprove}
+          className="bg-success text-success-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
+        >
+          <Check className="w-3 h-3" /> Approve Brief →
+        </button>
+      </div>
+
+      {/* Summary banner */}
+      <div className="bg-pf-mist border-b border-pf-sky px-6 py-3 flex-shrink-0">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-[11px] font-extrabold uppercase tracking-wider text-pf-dark/70 mb-0.5">
+            Brief Summary
+          </div>
+          <p className="text-[13px] text-foreground leading-relaxed">
+            <span className="font-semibold">{currentBrief.projectTitle}</span> — {currentBrief.goal}
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            {currentBrief.contentSections.length} content sections · {currentBrief.keyMessages.length} key messages
+          </p>
+        </div>
+      </div>
+
+      {/* Editable accordion */}
+      <div className="flex-1 overflow-y-auto">
+        <BriefAccordion brief={currentBrief} onUpdate={setCurrentBrief} />
+      </div>
+
+      {/* Footer */}
+      <div className="bg-card border-t border-border px-6 py-3 flex items-center justify-between flex-shrink-0">
+        <button
+          onClick={() => goToStep(1)}
+          className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-primary"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" /> Back to Ideation
+        </button>
+        <button
+          onClick={handleApprove}
+          className="bg-success text-success-foreground rounded-md px-5 py-2 text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
+        >
+          <Check className="w-3 h-3" /> Approve Brief →
         </button>
       </div>
     </div>
   );
 };
 
-function ChipGroup({ title, options, selected, onSelect }: {
-  title: string;
-  options: { label: string; desc: string }[];
-  selected: string | null;
-  onSelect: (v: string) => void;
-}) {
-  return (
-    <div className="bg-card border-[1.5px] border-border rounded-lg p-4 shadow-pf">
-      <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-3">{title}</div>
-      <div className="flex flex-wrap gap-2">
-        {options.map(opt => (
-          <button
-            key={opt.label}
-            onClick={() => onSelect(opt.label)}
-            className={cn(
-              "px-3.5 py-1.5 rounded-full border-[1.5px] text-xs font-medium transition-all select-none",
-              selected === opt.label
-                ? "bg-primary border-primary text-primary-foreground shadow-[0_2px_6px_hsla(200,100%,41%,0.3)]"
-                : "bg-secondary border-border text-muted-foreground hover:border-primary hover:text-primary hover:bg-pf-mist"
-            )}
-            title={opt.desc}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-      {selected && (
-        <p className="text-[11px] text-muted-foreground mt-2">
-          {options.find(o => o.label === selected)?.desc}
-        </p>
-      )}
-    </div>
-  );
-}
-
-export default PreliminaryPanel;
+export default BriefDisplayPanel;

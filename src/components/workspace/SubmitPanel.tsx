@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { supabase } from "@/integrations/supabase/client";
+import { appendAuditEvent, exportAuditJsonl } from "@/lib/audit";
 import { toast } from "sonner";
 
 const SubmitPanel = () => {
@@ -56,9 +58,58 @@ const SubmitPanel = () => {
     toast.success("HTML export downloaded");
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!agreed) return;
+
+    const payload = {
+      projectTitle: ws.currentBrief?.projectTitle || "Untitled Project",
+      submitter: `${ws.user?.firstName || ""} ${ws.user?.lastName || ""}`.trim(),
+      submitterEmail: ws.user?.email || "",
+      country: ws.user?.country || "",
+      buildType: ws.prelim.buildType || "",
+      score: ws.reviewData?.overallScore || 0,
+    };
+
+    try {
+      const { data, error } = await supabase.functions.invoke("notify-reviewer", { body: payload });
+      if (error) throw new Error(error.message);
+      appendAuditEvent({
+        eventType: "notification",
+        actor: ws.user?.email || "unknown-user",
+        details: {
+          reviewer_notified: true,
+          simulated: Boolean(data?.simulated),
+          message: data?.message || null,
+        },
+      });
+      if (data?.simulated) {
+        toast.message("Reviewer notification simulated (configure env vars for live email)");
+      } else {
+        toast.success("Reviewer notification sent");
+      }
+    } catch (err: any) {
+      appendAuditEvent({
+        eventType: "notification",
+        actor: ws.user?.email || "unknown-user",
+        details: {
+          reviewer_notified: false,
+          error: err?.message || "Notification call failed",
+        },
+      });
+      toast.warning("Submission recorded, but reviewer notification failed");
+    }
+
     ws.setSubmitted();
+    appendAuditEvent({
+      eventType: "submission",
+      actor: ws.user?.email || "unknown-user",
+      details: {
+        projectTitle: ws.currentBrief?.projectTitle || "Untitled Project",
+        score: ws.reviewData?.overallScore || 0,
+        buildType: ws.prelim.buildType || "",
+        audience: ws.prelim.audience || "",
+      },
+    });
     toast.success("Project submitted for review!");
   };
 
@@ -97,6 +148,12 @@ const SubmitPanel = () => {
 
         <div className="grid grid-cols-2 gap-2">
           <button
+            onClick={() => exportAuditJsonl()}
+            className="w-full bg-card border border-border text-foreground rounded-md py-3 text-sm font-bold hover:border-primary hover:text-primary transition-all"
+          >
+            Export Audit Log
+          </button>
+          <button
             onClick={handleExportHtml}
             className="w-full bg-card border border-border text-foreground rounded-md py-3 text-sm font-bold hover:border-primary hover:text-primary transition-all"
           >
@@ -105,7 +162,7 @@ const SubmitPanel = () => {
           <button
             onClick={handleSubmit}
             disabled={!agreed}
-            className="w-full bg-btn-gradient text-primary-foreground rounded-md py-3 text-sm font-bold shadow-pf hover:shadow-pf-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full bg-btn-gradient text-primary-foreground rounded-md py-3 text-sm font-bold shadow-pf hover:shadow-pf-md transition-all disabled:opacity-40 disabled:cursor-not-allowed col-span-2"
           >
             Submit for Review
           </button>

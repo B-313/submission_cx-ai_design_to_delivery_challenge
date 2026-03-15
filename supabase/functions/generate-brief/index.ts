@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { formatRagContext, retrievePfizerContext } from "../_shared/pfizerRag.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,11 +11,21 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { enrichedPrompt, buildType, audience, country } = await req.json();
+    const { enrichedPrompt, buildType, audience, country, rawPrompt, fullPrompt, ideationAnswers, sourceContext } = await req.json();
     if (!enrichedPrompt) return new Response(JSON.stringify({ error: "Enriched prompt required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+
+    const ragChunks = retrievePfizerContext(`${enrichedPrompt}\n${buildType || ""}\n${audience || ""}\n${country || ""}`);
+    const ragContext = formatRagContext(ragChunks);
+    const ideationSummary = ideationAnswers ? JSON.stringify(ideationAnswers, null, 2) : "{}";
+    const sourceSummary = Array.isArray(sourceContext)
+      ? sourceContext
+          .slice(0, 6)
+          .map((s: any, i: number) => `Source ${i + 1}: ${s?.name || "Unnamed"} [${s?.sourceType || "unknown"}]\n${s?.excerpt || ""}`)
+          .join("\n\n")
+      : "No source context provided";
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -22,8 +33,14 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: enrichedPrompt },
-          { role: "user", content: `Generate a comprehensive ideation brief for a ${buildType || "webpage"} targeting ${audience || "patients"} in ${country || "Global"}. Use the constraints above. Return ONLY the JSON structure specified.` },
+          {
+            role: "system",
+            content: `${enrichedPrompt}\n\n=== RAG BRAND CONTEXT (Pfizer docs) ===\n${ragContext}\n\nUse this context to enforce Pfizer tone, clarity, and responsible claims. Do not cite chunk IDs in the output.\n\nYou must ground the brief in user-provided context, not generic pharma boilerplate.`,
+          },
+          {
+            role: "user",
+            content: `Generate a comprehensive ideation brief for a ${buildType || "webpage"} targeting ${audience || "patients"} in ${country || "Global"}. Use the constraints above and the Pfizer RAG context. Return ONLY the JSON structure specified.\n\n=== USER RAW PROMPT ===\n${rawPrompt || ""}\n\n=== IDEATION ANSWERS ===\n${ideationSummary}\n\n=== FULL IDEATION CONTEXT ===\n${fullPrompt || ""}\n\n=== DOCUMENT/LINK EXCERPTS ===\n${sourceSummary}\n\nStrict grounding rules:\n1) Goal, key messages, and content sections must be directly relevant to the user prompt and ideation answers.\n2) If source excerpts are present, reflect their topics in "informationFromSources" and contentSections.\n3) Avoid generic statements that are not tied to the provided context.`,
+          },
         ],
         tools: [{
           type: "function",

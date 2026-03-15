@@ -8,8 +8,7 @@ const FIELDS: { key: keyof BriefData; label: string; maxLen: number; heading?: b
   { key: "audience", label: "Target Audience", maxLen: 300 },
   { key: "keyMessages", label: "Key Messages", maxLen: 500, list: true },
   { key: "contentSections", label: "Page Sections", maxLen: 400, list: true },
-  { key: "toneAndStyle", label: "Tone & Style", maxLen: 300 },
-  { key: "inspiration", label: "Inspiration", maxLen: 300 },
+  { key: "informationFromSources", label: "Information Based on Documents and Links Provided", maxLen: 700 },
 ];
 
 interface BriefAccordionProps {

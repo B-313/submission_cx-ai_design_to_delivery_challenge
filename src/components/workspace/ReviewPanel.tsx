@@ -5,12 +5,13 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
+import { appendAuditEvent } from "@/lib/audit";
 
 const ReviewPanel = () => {
   const ws = useWorkspace();
 
   useEffect(() => {
-    if (ws.step === 3 && !ws.reviewData && !ws.loading) {
+    if (ws.step === 4 && !ws.reviewData && !ws.loading) {
       runReview();
     }
   }, [ws.step]);
@@ -30,6 +31,15 @@ const ReviewPanel = () => {
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
       ws.setReviewData(data);
+      appendAuditEvent({
+        eventType: "review_run",
+        actor: ws.user?.email || "unknown-user",
+        details: {
+          overallScore: data?.overallScore,
+          complianceIssues: data?.complianceIssues?.length || 0,
+          grammarIssues: data?.grammarIssues?.length || 0,
+        },
+      });
       toast.success("Review complete — approve or decline each finding");
     } catch (err: any) {
       toast.error(err.message || "Review failed");
@@ -44,6 +54,7 @@ const ReviewPanel = () => {
     ? [...review.complianceIssues, ...review.grammarIssues].every(i => ws.reviewDecisions[i.id])
     : false;
   const score = review?.overallScore || 0;
+  const canProceed = allDecided && score >= 70;
   const circumference = 2 * Math.PI * 54;
   const offset = circumference - (score / 100) * circumference;
   const scoreColor = score >= 90 ? "hsl(153,69%,27%)" : score >= 70 ? "hsl(200,100%,41%)" : score >= 50 ? "hsl(30,100%,31%)" : "hsl(0,72%,51%)";
@@ -64,6 +75,18 @@ const ReviewPanel = () => {
   }
 
   if (!review) return null;
+
+  const handleDecision = (id: string, decision: "approved" | "declined") => {
+    ws.setReviewDecision(id, decision);
+    appendAuditEvent({
+      eventType: "review_decision",
+      actor: ws.user?.email || "unknown-user",
+      details: { issueId: id, decision },
+    });
+    if (decision === "approved") {
+      toast.message("Review accepted. Builder content stays unchanged until you edit it manually.");
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
@@ -99,7 +122,7 @@ const ReviewPanel = () => {
           <div className="flex-1">
             <div className="text-[15px] font-bold text-foreground mb-1">Overall Quality Score</div>
             <p className="text-[13px] text-muted-foreground mb-3">
-              {score >= 90 ? "Ready for submission" : score >= 70 ? "Review recommended issues below" : "Significant issues need attention"}
+              {score >= 70 ? "Ready for submission once all findings are decided" : "Significant issues need attention"}
             </p>
             <div className="space-y-1">
               {Object.entries(review.scores).map(([key, val]) => (
@@ -162,9 +185,9 @@ const ReviewPanel = () => {
                       <div className="text-[13px] text-success font-semibold bg-success-light rounded-md px-2.5 py-1.5 mb-3">{issue.recommendation}</div>
                       {!decision ? (
                         <div className="flex gap-2">
-                          <button onClick={() => ws.setReviewDecision(issue.id, "approved")}
+                          <button onClick={() => handleDecision(issue.id, "approved")}
                             className="flex-1 bg-success text-success-foreground rounded-md py-1.5 text-xs font-bold hover:opacity-90">Accept</button>
-                          <button onClick={() => ws.setReviewDecision(issue.id, "declined")}
+                          <button onClick={() => handleDecision(issue.id, "declined")}
                             className="flex-1 bg-card border border-border rounded-md py-1.5 text-xs font-semibold text-muted-foreground hover:border-foreground hover:text-foreground">Decline</button>
                         </div>
                       ) : (
@@ -180,9 +203,9 @@ const ReviewPanel = () => {
           </div>
         ))}
 
-        {score < 90 && (
+        {!canProceed && (
           <div className="bg-destructive/5 border-[1.5px] border-destructive/25 rounded-lg p-4 text-[13px] text-destructive font-semibold">
-            Score is below 90% threshold. Review and accept recommendations above, then re-run to improve.
+            Submission requires a score of 70 or higher and a decision (Accept/Decline) for every finding. Fix the "what" using recommendations and the "why" shown under each issue, then re-run review.
           </div>
         )}
 
@@ -196,8 +219,8 @@ const ReviewPanel = () => {
             </button>
           </div>
           <button
-            onClick={() => ws.goToStep(4)}
-            disabled={!allDecided}
+            onClick={() => ws.goToStep(5)}
+            disabled={!canProceed}
             className="bg-btn-gradient text-primary-foreground rounded-md px-5 py-2 text-sm font-bold shadow-pf disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Proceed to Submit →

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { formatRagContext, retrievePfizerContext } from "../_shared/pfizerRag.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -122,7 +123,7 @@ function predictReadability(brief: string, audience: string) {
   };
 }
 
-function buildEnrichedPrompt(brief: string, audience: any, jurisdiction: any, risk: any, tone: any, readability: any, context: any) {
+function buildEnrichedPrompt(brief: string, audience: any, jurisdiction: any, risk: any, tone: any, readability: any, context: any, ragContext: string) {
   const lines = ["You are a senior Pfizer digital strategist.", ""];
   lines.push("=== PROJECT CONTEXT ===");
   if (context.buildType) lines.push(`Build type   : ${context.buildType}`);
@@ -146,6 +147,9 @@ function buildEnrichedPrompt(brief: string, audience: any, jurisdiction: any, ri
   }
   if (readability.inject_simplify) lines.push(`• READABILITY: ${readability.guidance}`);
   lines.push("• Return ONLY valid JSON. No markdown.");
+  lines.push("");
+  lines.push("=== BRAND RAG CONTEXT (Pfizer docs) ===");
+  lines.push(ragContext);
   lines.push("");
   lines.push("=== USER REQUEST ===");
   lines.push(brief);
@@ -224,7 +228,10 @@ serve(async (req) => {
     const readability = predictReadability(brief, audienceResult.audience);
     const scoring = calculateScore(audienceResult, risk, tone, readability);
 
-    const enriched_prompt = buildEnrichedPrompt(brief, audienceResult, jurisdiction, risk, tone, readability, { buildType, country });
+    const ragChunks = retrievePfizerContext(`${brief}\n${buildType || ""}\n${country || ""}\n${audHint || ""}`);
+    const ragContext = formatRagContext(ragChunks);
+
+    const enriched_prompt = buildEnrichedPrompt(brief, audienceResult, jurisdiction, risk, tone, readability, { buildType, country }, ragContext);
 
     return new Response(JSON.stringify({
       ...scoring,
@@ -233,6 +240,7 @@ serve(async (req) => {
       risk,
       tone,
       readability,
+      rag_context: ragContext,
       enriched_prompt,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 

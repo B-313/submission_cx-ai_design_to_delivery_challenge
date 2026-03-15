@@ -24,18 +24,21 @@ const RegistrationPanel = () => {
   ];
 
   return (
-    <div className="flex-1 flex items-center justify-center overflow-y-auto" style={{ background: "radial-gradient(ellipse at 60% 0%, hsl(198 76% 96%) 0%, hsl(210 33% 97%) 55%)" }}>
-      <div className="bg-card border border-border rounded-[20px] shadow-pf-lg p-9 w-[480px] max-w-[94vw] animate-fade-up">
+    <div className="flex-1 flex items-start justify-center overflow-y-auto py-8" style={{ background: "radial-gradient(ellipse at 60% 0%, hsl(198 76% 96%) 0%, hsl(210 33% 97%) 55%)" }}>
+      <div className="bg-card border border-border rounded-[20px] shadow-pf-lg p-10 w-[620px] max-w-[95vw] animate-fade-up">
         <h2 className="font-serif text-2xl text-pf-dark mb-1">Welcome to the Accelerator</h2>
-        <p className="text-[13px] text-muted-foreground mb-6">Enter your details to personalise your workspace.</p>
+        <p className="text-[13px] text-muted-foreground mb-5">Enter your details to personalise your workspace.</p>
+        <div className="bg-warning-light border border-warning/25 rounded-md px-3 py-2 text-[12px] text-warning font-semibold mb-6">
+          Mandatory details are required to access the portal: First Name, Last Name, Company Email, Employee Number, Department, and Country/Region.
+        </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-2 gap-4 mb-3">
           <Field label="First Name" value={form.firstName} onChange={v => update("firstName", v)} placeholder="Jane" />
           <Field label="Last Name" value={form.lastName} onChange={v => update("lastName", v)} placeholder="Smith" />
         </div>
         <Field label="Company Email" value={form.email} onChange={v => update("email", v)} placeholder="jane.smith@pfizer.com" type="email" />
         <Field label="Phone Number" value={form.phone} onChange={v => update("phone", v)} placeholder="+44 7700 000000" />
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-2 gap-4 mb-3">
           <Field label="Employee Number" value={form.empNumber} onChange={v => update("empNumber", v)} placeholder="PFZ-00000" />
           <Field label="Department" value={form.department} onChange={v => update("department", v)} placeholder="Digital Marketing" />
         </div>
@@ -54,7 +57,7 @@ const RegistrationPanel = () => {
         <button
           onClick={handleSubmit}
           disabled={!canSubmit}
-          className="w-full bg-btn-gradient text-primary-foreground rounded-md py-3 text-sm font-bold shadow-pf hover:shadow-pf-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full bg-btn-gradient text-primary-foreground rounded-md py-3.5 text-sm font-bold shadow-pf hover:shadow-pf-md transition-all disabled:opacity-40 disabled:cursor-not-allowed mt-1"
         >
           Continue to Workspace →
         </button>
@@ -67,7 +70,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }: {
   label: string; value: string; onChange: (v: string) => void; placeholder: string; type?: string;
 }) {
   return (
-    <div className="mb-3">
+    <div className="mb-4">
       <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{label}</label>
       <input
         type={type}

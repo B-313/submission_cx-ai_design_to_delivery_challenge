@@ -31,7 +31,7 @@ const DesignPickerPanel = () => {
     if (!canProceed) return;
     ws.setLayout(selectedLayout);
     toast.success("Design selected — loading builder");
-    ws.goToStep(3);
+    ws.goToStep(2);
   };
 
   return (

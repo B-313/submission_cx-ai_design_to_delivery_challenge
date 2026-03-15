@@ -35,7 +35,16 @@ export interface BriefData {
   keyMessages: string[];
   contentSections: string[];
   toneAndStyle: string;
-  inspiration: string;
+  informationFromSources: string;
+  inspiration?: string;
+}
+
+export interface WorkspaceMaterial {
+  id: string;
+  name: string;
+  type: "document" | "link" | "image";
+  source: string;
+  stage: "ideation" | "builder";
 }
 
 export interface ReviewIssue {
@@ -70,6 +79,7 @@ interface WorkspaceState {
   loading: boolean;
   activeAgent: number | null;
   notes: string;
+  materials: WorkspaceMaterial[];
 }
 
 interface WorkspaceContextValue extends WorkspaceState {
@@ -87,6 +97,8 @@ interface WorkspaceContextValue extends WorkspaceState {
   setLoading: (loading: boolean) => void;
   setActiveAgent: (agent: number | null) => void;
   setNotes: (notes: string) => void;
+  addMaterial: (material: Omit<WorkspaceMaterial, "id">) => string;
+  removeMaterial: (id: string) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -108,6 +120,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     loading: false,
     activeAgent: null,
     notes: "",
+    materials: [],
   });
 
   const goToStep = useCallback((step: number) => {
@@ -173,6 +186,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, notes }));
   }, []);
 
+  const addMaterial = useCallback((material: Omit<WorkspaceMaterial, "id">) => {
+    const id = `material-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setState(s => ({ ...s, materials: [...s.materials, { ...material, id }] }));
+    return id;
+  }, []);
+
+  const removeMaterial = useCallback((id: string) => {
+    setState(s => ({ ...s, materials: s.materials.filter(m => m.id !== id) }));
+  }, []);
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -180,6 +203,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         goToStep, setUser, setPrelim, setPieResult, approvePie,
         setCurrentBrief, addBriefVersion, setLayout, setReviewData,
         setReviewDecision, setSubmitted, setLoading, setActiveAgent, setNotes,
+        addMaterial, removeMaterial,
       }}
     >
       {children}
