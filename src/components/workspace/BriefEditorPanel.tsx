@@ -19,6 +19,7 @@ const QUESTIONS: {
   question: string;
   subtitle?: string;
   options?: string[];
+  dropdown?: boolean;
   multiSelect?: boolean;
   freeText?: boolean;
   placeholder?: string;
@@ -57,7 +58,8 @@ const QUESTIONS: {
   {
     key: "region",
     question: "Region",
-    subtitle: "Select the market/region",
+    subtitle: "Select the target market/region (this can differ from your office location)",
+    dropdown: true,
     options: [
       "Global",
       "United Kingdom",
@@ -113,7 +115,7 @@ const hasValue = (val: string | string[] | undefined) => {
   return typeof val === "string" ? val.trim().length > 0 : false;
 };
 
-const BRIEF_DRAFT_KEY = "pfizer_brief_editor_draft_v1";
+const BRIEF_DRAFT_KEY = "company_name_brief_editor_draft_v1";
 
 type UploadedSource = { id: string; name: string; content: string; materialId: string; source: string; sourceType: "document" | "link" };
 
@@ -201,7 +203,7 @@ function buildFallbackPieResult(briefText: string, answerSet: QAnswers, countryH
     tone: { tone_score: 0.78, label: "borderline", inject_guidance: false },
     readability: { predicted_grade: 9, target_grade: audience.toLowerCase().includes("patient") ? 8 : 11, target_label: "Fallback", inject_simplify: false, guidance: "Fallback readability" },
     enriched_prompt: [
-      "You are a senior Pfizer strategist.",
+      "You are a senior Company Name strategist.",
       `Build type: ${(answerSet.buildType as string) || "Webpage"}`,
       `Audience: ${audience}`,
       `Country: ${country}`,
@@ -365,9 +367,7 @@ const BriefEditorPanel = () => {
     toast.success("Webpage link added");
   };
 
-  const getSeedAnswers = (): QAnswers => ({
-    ...(ws.user?.country ? { region: ws.user.country } : {}),
-  });
+  const getSeedAnswers = (): QAnswers => ({});
 
   const getMissingQuestionQueue = (seed: QAnswers) =>
     QUESTIONS
@@ -456,6 +456,16 @@ const BriefEditorPanel = () => {
     advanceQuestion(nextAnswers);
   };
 
+  const submitDropdownAnswer = () => {
+    const q = currentQ;
+    if (!q || !q.dropdown) return;
+    const selected = String(answers[q.key] || "").trim();
+    if (!selected) return;
+    const nextAnswers = { ...answers, [q.key]: selected };
+    setAnswers(nextAnswers);
+    advanceQuestion(nextAnswers);
+  };
+
   const skipQuestion = () => advanceQuestion();
 
   const goToPreviousQuestion = () => {
@@ -486,11 +496,6 @@ const BriefEditorPanel = () => {
       .map(v => v.trim())
       .filter(Boolean)
       .slice(0, 5);
-    const websitePages = String(answerSet.websitePages || "")
-      .split("\n")
-      .map(v => v.trim())
-      .filter(Boolean)
-      .slice(0, 8);
     const selectedPageOptions = Array.isArray(answerSet.websitePages)
       ? answerSet.websitePages.map(v => String(v).trim()).filter(Boolean)
       : [];
@@ -506,24 +511,22 @@ const BriefEditorPanel = () => {
       keyMessages: themes.length > 0 ? themes : [projectSeed, "Use approved, compliant statements.", "Guide users to the next action."],
       contentSections: [
         `Overview - ${projectSeed}`,
-        ...(buildType === "Website" && selectedPageOptions.length > 0
-          ? [`Page options selected - ${selectedPageOptions.join(", ")}`]
-          : []),
-        ...(buildType === "Website" && websitePages.length > 0
-          ? [`Website pages - ${websitePages.join(", ")}`]
-          : []),
-        ...(buildType === "Website" && websiteLayout
-          ? [`Preferred layout style - ${websiteLayout}`]
-          : []),
-        "Themes and topics - prioritized for clarity",
-        "Supporting proof - approved references and statements",
-        "CTA - explicit next step",
-      ],
-      toneAndStyle: "Clear, concise, and compliant Pfizer tone. Avoid promotional exaggeration; keep user-first language.",
+        `Patient support essentials - ${themes.slice(0, 2).join(" and ") || "core treatment guidance"}`,
+        regulatory ? "Approved medical information - MHRA-compliant indication, side effects, and disclaimers" : "Approved medical information - only validated claims and signposting",
+        buildType === "Website" && websiteLayout ? `Page experience - ${websiteLayout} layout for clear navigation` : "Page experience - clear path through key support information",
+        selectedPageOptions.length > 0 ? `Priority modules - ${selectedPageOptions.slice(0, 3).join(", ")}` : "Priority modules - tools, resources, and next steps",
+        "CTA and support - helplines, downloads, and follow-up actions",
+      ].filter(Boolean).slice(0, 6),
+      toneAndStyle: "Clear, concise, and compliant Company Name tone. Avoid promotional exaggeration; keep user-first language.",
       informationFromSources: [
-        fileNames ? `Documents/links provided: ${fileNames}` : "No supporting documents or links provided.",
+        fileNames ? `User-provided documents/links: ${fileNames}` : "No supporting documents or links were uploaded; brief is grounded in prompt and ideation inputs only.",
         regulatory ? `Regulatory/clinical inputs: ${regulatory}` : "No regulatory/clinical evidence block provided.",
       ].join("\n"),
+      inspiration: [
+        `PIE refinement: audience tuned for ${aud} in ${region}.`,
+        regulatory ? "PIE applied guardrails for regulated medical content and approved-claim discipline." : "PIE applied standard Company Name compliance framing.",
+        websiteLayout ? `PIE structured the brief for a ${websiteLayout} experience.` : "PIE structured the brief for a clear, scannable website journey.",
+      ].join(" "),
     };
   };
 
@@ -558,14 +561,18 @@ const BriefEditorPanel = () => {
       let pieResult: PIEResult;
 
       try {
-        const { data, error } = await supabase.functions.invoke("pie-classify", {
-          body: {
-            brief: fullPrompt,
-            country: (answerSet.region as string) || ws.user?.country || "",
-            audience,
-            buildType: (answerSet.buildType as string) || "",
-          },
-        });
+        const timedPieInvoke = Promise.race([
+          supabase.functions.invoke("pie-classify", {
+            body: {
+              brief: fullPrompt,
+              country: (answerSet.region as string) || ws.user?.country || "",
+              audience,
+              buildType: (answerSet.buildType as string) || "",
+            },
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("PIE classification timeout")), 8000)),
+        ]);
+        const { data, error } = await timedPieInvoke as any;
         if (error) throw new Error(error.message);
         if (data?.error) throw new Error(data.error);
         pieResult = data as PIEResult;
@@ -647,7 +654,7 @@ const BriefEditorPanel = () => {
       if (!brief) throw new Error("Brief generation failed");
       const normalizedBrief: BriefData = {
         ...brief,
-        toneAndStyle: brief.toneAndStyle || "Clear, concise, and compliant Pfizer tone. Avoid promotional exaggeration; keep user-first language.",
+        toneAndStyle: brief.toneAndStyle || "Clear, concise, and compliant Company Name tone. Avoid promotional exaggeration; keep user-first language.",
         informationFromSources: brief.informationFromSources || brief.inspiration || "No source summary was generated.",
       };
 
@@ -809,7 +816,29 @@ const BriefEditorPanel = () => {
               )}
 
               {/* Options (chips) */}
-              {currentQ.options && (
+              {currentQ.dropdown && currentQ.options && (
+                <div className="ml-9 mb-4">
+                  <select
+                    value={String(answers[currentQ.key] || "")}
+                    onChange={e => setAnswers(prev => ({ ...prev, [currentQ.key]: e.target.value }))}
+                    className="w-full bg-secondary border-[1.5px] border-border rounded-lg p-3 text-sm text-foreground outline-none focus:border-primary transition-colors"
+                  >
+                    <option value="">Select target region…</option>
+                    {currentQ.options.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={submitDropdownAnswer}
+                    disabled={!String(answers[currentQ.key] || "").trim()}
+                    className="mt-2 bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold disabled:opacity-40 flex items-center gap-1.5"
+                  >
+                    Next <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {currentQ.options && !currentQ.dropdown && (
                 <div className="flex flex-wrap gap-2 mb-4 ml-9">
                   {currentQ.options.map(opt => {
                     const isSelected = currentQ.multiSelect

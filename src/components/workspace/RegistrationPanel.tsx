@@ -36,7 +36,7 @@ const RegistrationPanel = () => {
           <Field label="First Name" value={form.firstName} onChange={v => update("firstName", v)} placeholder="Jane" />
           <Field label="Last Name" value={form.lastName} onChange={v => update("lastName", v)} placeholder="Smith" />
         </div>
-        <Field label="Company Email" value={form.email} onChange={v => update("email", v)} placeholder="jane.smith@pfizer.com" type="email" />
+        <Field label="Company Email" value={form.email} onChange={v => update("email", v)} placeholder="jane.smith@company.com" type="email" />
         <Field label="Phone Number" value={form.phone} onChange={v => update("phone", v)} placeholder="+44 7700 000000" />
         <div className="grid grid-cols-2 gap-4 mb-3">
           <Field label="Employee Number" value={form.empNumber} onChange={v => update("empNumber", v)} placeholder="PFZ-00000" />

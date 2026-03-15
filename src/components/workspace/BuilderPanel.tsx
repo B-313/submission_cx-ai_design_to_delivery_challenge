@@ -35,6 +35,9 @@ const BuilderPanel = () => {
   const [complianceText, setComplianceText] = useState("");
   const [complianceLocked, setComplianceLocked] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewDirty, setPreviewDirty] = useState(true);
+  const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
   const [materialName, setMaterialName] = useState("");
   const [materialUrl, setMaterialUrl] = useState("");
   const [materialType, setMaterialType] = useState<"link" | "image" | "document">("link");
@@ -56,6 +59,7 @@ const BuilderPanel = () => {
   const updatePageBlocks = (updater: (blocks: CanvasBlock[]) => CanvasBlock[]) => {
     setPages(prev => prev.map((p, i) => i === activePage ? { ...p, blocks: updater(p.blocks) } : p));
     setNeedsRerun(true);
+    setPreviewDirty(true);
   };
 
   const addPage = () => {
@@ -67,6 +71,7 @@ const BuilderPanel = () => {
     };
     setPages(prev => [...prev, newPage]);
     setActivePage(pages.length);
+    setPreviewDirty(true);
     toast.success(`Page ${num} added`);
   };
 
@@ -74,11 +79,13 @@ const BuilderPanel = () => {
     if (pages.length === 1) { toast.warning("Cannot remove the last page"); return; }
     setPages(prev => prev.filter((_, i) => i !== idx));
     setActivePage(prev => Math.max(0, prev >= idx ? prev - 1 : prev));
+    setPreviewDirty(true);
     toast.success("Page removed");
   };
 
   const renamePage = (idx: number, name: string) => {
     setPages(prev => prev.map((p, i) => i === idx ? { ...p, name } : p));
+    setPreviewDirty(true);
   };
 
   // ── Block management ──
@@ -92,6 +99,7 @@ const BuilderPanel = () => {
     ws.setLayout(layout);
     setPages(prev => prev.map((p, i) => i === activePage ? { ...p, blocks: buildBlocks(ws, layout) } : p));
     setNeedsRerun(true);
+    setPreviewDirty(true);
     toast.success(`Layout switched to ${layout}`);
   };
 
@@ -152,7 +160,7 @@ const BuilderPanel = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${slug || "pfizer-page"}.html`;
+    a.download = `${slug || "company-name-page"}.html`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -198,6 +206,7 @@ const BuilderPanel = () => {
       source: materialUrl.trim(),
       stage: "builder",
     });
+    setPreviewDirty(true);
     setMaterialName("");
     setMaterialUrl("");
     toast.success("Material added to preview placeholders");
@@ -230,6 +239,7 @@ const BuilderPanel = () => {
         source: file.name,
         stage: "builder",
       });
+      setPreviewDirty(true);
       toast.success(`Uploaded ${customName}`);
     }
 
@@ -252,7 +262,12 @@ const BuilderPanel = () => {
       return next;
     });
     setNeedsRerun(true);
+    setPreviewDirty(true);
   }, [ws.step, ws.currentBrief?.projectTitle, ws.layout]);
+
+  useEffect(() => {
+    setPreviewDirty(true);
+  }, [activePage]);
 
   useEffect(() => {
     if (!complianceLocked) {
@@ -308,7 +323,7 @@ const BuilderPanel = () => {
   };
 
   const generatePreviewHtml = useCallback(() => {
-    const title = ws.currentBrief?.projectTitle || "Pfizer";
+    const title = ws.currentBrief?.projectTitle || "Company Name";
     const builderMaterials = ws.materials.filter(m => m.stage === "builder");
     const previewDisclaimers = complianceText
       .split("\n")
@@ -332,7 +347,7 @@ const BuilderPanel = () => {
 .compliance h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#b42318;margin-bottom:8px}
 .compliance p{font-size:12px;line-height:1.6;color:#7a271a;margin:0 0 6px 0}
 .footer{background:#003087;color:rgba(255,255,255,.65);text-align:center;padding:22px;font-size:12px;margin-top:48px}
-</style></head><body><div class="nav"><span class="nav-logo">Pfizer</span></div>`;
+</style></head><body><div class="nav"><span class="nav-logo">Company Name</span></div>`;
 
     let isFirst = true;
     currentBlocks.forEach(blk => {
@@ -349,9 +364,21 @@ const BuilderPanel = () => {
       html += `<div class="materials"><h3>Material Placeholders</h3>${builderMaterials.map(m => `<p>[${m.type.toUpperCase()}] ${m.name} - ${m.source}</p>`).join("")}</div>`;
     }
     html += `<div class="compliance"><h3>Compliance and Regulatory Disclaimers</h3>${previewDisclaimers.map(d => `<p>${d}</p>`).join("")}</div>`;
-    html += `<div class="footer">Pfizer Inc. · Draft Preview · Not for external distribution</div></body></html>`;
+    html += `<div class="footer">Company Name · Draft Preview · Not for external distribution</div></body></html>`;
     return html;
   }, [currentBlocks, ws.currentBrief, ws.materials, complianceText]);
+
+  useEffect(() => {
+    if (!previewHtml) {
+      setPreviewHtml(generatePreviewHtml());
+      setPreviewDirty(false);
+    }
+  }, [generatePreviewHtml, previewHtml]);
+
+  const reloadPreview = () => {
+    setPreviewHtml(generatePreviewHtml());
+    setPreviewDirty(false);
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
@@ -368,6 +395,18 @@ const BuilderPanel = () => {
           className="border border-border rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary flex items-center gap-1.5"
         >
           <Download className="w-3 h-3" /> HTML
+        </button>
+
+        <button
+          onClick={reloadPreview}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-xs font-semibold border flex items-center gap-1.5 transition-colors",
+            previewDirty
+              ? "border-primary text-primary bg-primary/10"
+              : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+          )}
+        >
+          Reload Preview
         </button>
 
         <button
@@ -398,6 +437,12 @@ const BuilderPanel = () => {
         </div>
       )}
 
+      {previewDirty && (
+        <div className="px-5 py-2 border-b bg-primary/10 border-primary/20 text-[12px] text-primary font-semibold">
+          Preview is out of date. Click Reload Preview to refresh the preview pane.
+        </div>
+      )}
+
       {/* Final check result banner */}
       {finalResult && (
         <div className={cn(
@@ -420,7 +465,44 @@ const BuilderPanel = () => {
       )}
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={40} minSize={28}>
+        <ResizablePanel defaultSize={24} minSize={18}>
+          <div className="h-full overflow-y-auto bg-card border-r border-border p-4">
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-2">Brief Context</div>
+            {ws.currentBrief ? (
+              <div className="space-y-3">
+                <div className="border border-border rounded-lg p-3 bg-secondary/30">
+                  <div className="text-[11px] font-bold text-foreground mb-1">{ws.currentBrief.projectTitle}</div>
+                  <p className="text-[12px] text-muted-foreground leading-relaxed">{ws.currentBrief.goal}</p>
+                </div>
+                <div className="border border-border rounded-lg p-3 bg-card">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-1.5">Audience</div>
+                  <p className="text-[12px] text-foreground leading-relaxed">{ws.currentBrief.audience}</p>
+                </div>
+                <div className="border border-border rounded-lg p-3 bg-card">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-1.5">Key Messages</div>
+                  <ul className="space-y-1.5">
+                    {ws.currentBrief.keyMessages.map((msg, idx) => (
+                      <li key={idx} className="text-[12px] text-foreground leading-relaxed">• {msg}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="border border-border rounded-lg p-3 bg-card">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-1.5">Page Sections</div>
+                  <ul className="space-y-1.5">
+                    {ws.currentBrief.contentSections.map((section, idx) => (
+                      <li key={idx} className="text-[12px] text-foreground leading-relaxed">• {section}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[12px] text-muted-foreground">No brief data available yet. Go back to Brief and approve a generated brief.</div>
+            )}
+          </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+
+        <ResizablePanel defaultSize={38} minSize={28}>
           <div className="h-full overflow-y-auto bg-card flex flex-col">
             {/* ── Page tabs ── */}
             <div className="border-b border-border bg-secondary/50 px-3 pt-2 flex-shrink-0">
@@ -560,7 +642,7 @@ const BuilderPanel = () => {
                     <span className="text-[10px] text-muted-foreground">Each upload requires guideline confirmation.</span>
                   </div>
                   <div className="text-[10px] text-muted-foreground/80">
-                    Added materials appear as placeholders in preview and in the left sidebar materials list.
+                    Added materials appear as placeholders in the preview and in the top materials bar.
                   </div>
                 </div>
               </div>
@@ -636,13 +718,13 @@ const BuilderPanel = () => {
                 </label>
                 <textarea
                   value={complianceText}
-                  onChange={e => setComplianceText(e.target.value)}
+                  onChange={e => { setComplianceText(e.target.value); setPreviewDirty(true); }}
                   className="w-full border border-border rounded-md p-2 text-[12px] leading-[1.6] text-foreground resize-y outline-none bg-card focus:border-primary transition-all"
                   rows={5}
                 />
                 <div className="flex justify-end mt-2">
                   <button
-                    onClick={() => { setComplianceLocked(false); setComplianceText(suggestedDisclaimers.join("\n")); }}
+                    onClick={() => { setComplianceLocked(false); setComplianceText(suggestedDisclaimers.join("\n")); setPreviewDirty(true); }}
                     className="text-[11px] font-semibold text-primary hover:text-pf-dark"
                   >
                     Reset to Auto-Suggested
@@ -653,7 +735,7 @@ const BuilderPanel = () => {
           </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={60} minSize={35}>
+        <ResizablePanel defaultSize={38} minSize={30}>
           <div className="h-full flex flex-col bg-secondary">
             <div className="bg-secondary border-b border-border p-2 flex items-center gap-2 flex-shrink-0">
               <div className="flex gap-1 mr-2">
@@ -664,8 +746,36 @@ const BuilderPanel = () => {
               <div className="flex-1 bg-card border border-border rounded-full px-3 py-1 text-[11px] font-mono text-muted-foreground">
                 {pages[activePage]?.name} — {(ws.currentBrief?.projectTitle || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 28)}
               </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPreviewMode("desktop")}
+                  className={cn(
+                    "text-[10px] font-semibold px-2 py-1 rounded border",
+                    previewMode === "desktop"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card text-muted-foreground border-border hover:border-primary hover:text-primary"
+                  )}
+                >
+                  Desktop
+                </button>
+                <button
+                  onClick={() => setPreviewMode("mobile")}
+                  className={cn(
+                    "text-[10px] font-semibold px-2 py-1 rounded border",
+                    previewMode === "mobile"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card text-muted-foreground border-border hover:border-primary hover:text-primary"
+                  )}
+                >
+                  Mobile
+                </button>
+              </div>
             </div>
-            <iframe ref={iframeRef} className="flex-1 border-none bg-white" srcDoc={generatePreviewHtml()} />
+            <div className="flex-1 p-3 overflow-auto">
+              <div className={cn("h-full mx-auto bg-white border border-border rounded-md overflow-hidden", previewMode === "mobile" ? "max-w-[390px]" : "w-full")}>
+                <iframe ref={iframeRef} className="w-full h-full border-none bg-white" srcDoc={previewHtml} />
+              </div>
+            </div>
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -676,7 +786,7 @@ const BuilderPanel = () => {
 function buildBlocks(ws: ReturnType<typeof import("@/contexts/WorkspaceContext").useWorkspace>, layoutOverride?: string): CanvasBlock[] {
   const b = ws.currentBrief;
   const layout = layoutOverride || ws.layout || "hero";
-  const t = b?.projectTitle || "Pfizer Page";
+  const t = b?.projectTitle || "Company Name Page";
   const g = b?.goal || "Delivering impactful digital experiences.";
   const km = b?.keyMessages || ["Innovation", "Patient-centred", "Compliance"];
   const cs = b?.contentSections || ["Introduction", "Benefits", "CTA"];
@@ -685,7 +795,7 @@ function buildBlocks(ws: ReturnType<typeof import("@/contexts/WorkspaceContext")
     hero: [
       { id: "1", name: "Hero Banner", fields: [{ label: "Headline", value: t, heading: true }, { label: "Subheadline", value: g }] },
       { id: "2", name: "Feature Cards", fields: km.slice(0, 3).map((m, i) => ({ label: `Card ${i + 1}`, value: m })) },
-      { id: "3", name: "Call to Action", fields: [{ label: "CTA Text", value: "Learn how Pfizer is transforming healthcare." }] },
+      { id: "3", name: "Call to Action", fields: [{ label: "CTA Text", value: "Learn how Company Name is transforming healthcare." }] },
     ],
     "two-col": [
       { id: "1", name: "Main Content", fields: [{ label: "Title", value: t, heading: true }, { label: "Body", value: g + "\n\n" + cs.join(" — ") }] },

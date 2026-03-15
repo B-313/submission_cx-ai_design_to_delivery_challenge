@@ -12,7 +12,7 @@ export type AuditEvent = {
   details: Record<string, unknown>;
 };
 
-const AUDIT_KEY = "pfizer_portal_audit_log_v1";
+const AUDIT_KEY = "company_name_portal_audit_log_v1";
 
 export function getAuditEvents(): AuditEvent[] {
   try {
@@ -37,7 +37,7 @@ export function appendAuditEvent(event: Omit<AuditEvent, "id" | "timestamp">): A
   return item;
 }
 
-export function exportAuditJsonl(filename = "pfizer-audit-log.jsonl") {
+export function exportAuditJsonl(filename = "company-name-audit-log.jsonl") {
   const events = getAuditEvents();
   const jsonl = events.map((e) => JSON.stringify(e)).join("\n");
   const blob = new Blob([jsonl], { type: "application/x-ndjson;charset=utf-8" });

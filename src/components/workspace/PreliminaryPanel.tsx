@@ -3,11 +3,24 @@ import BriefAccordion from "./BriefAccordion";
 import { Check, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 
-const BRIEF_DRAFT_KEY = "pfizer_brief_editor_draft_v1";
+const BRIEF_DRAFT_KEY = "company_name_brief_editor_draft_v1";
 
 const BriefDisplayPanel = () => {
   const ws = useWorkspace();
-  const { currentBrief, goToStep, approvePie, setCurrentBrief } = ws;
+  const { currentBrief, goToStep, approvePie, setCurrentBrief, pieResult, materials } = ws;
+
+  const materialCount = materials.length;
+  const sourceValue = materialCount > 0 ? `${materialCount} source${materialCount === 1 ? "" : "s"} absorbed` : "Prompt-led brief";
+  const sourceDetail = currentBrief.informationFromSources || "No source summary available.";
+  const enrichmentDetail = currentBrief.inspiration || "PIE applied audience, compliance, and structure refinement.";
+  const audienceLabel = pieResult?.audience?.audience || ws.prelim.audience || "Not detected";
+  const jurisdictionLabel = pieResult?.jurisdiction?.body || "Global default safeguards";
+  const readabilityLabel = pieResult
+    ? `Grade ${pieResult.readability.predicted_grade} to target ${pieResult.readability.target_grade}`
+    : "Audience readability guidance pending";
+  const guardrailLabel = pieResult
+    ? `${pieResult.risk.level} risk with ${pieResult.risk.recommendations.length} guardrail${pieResult.risk.recommendations.length === 1 ? "" : "s"}`
+    : "Default guardrails applied";
 
   const handleApprove = () => {
     approvePie();
@@ -35,9 +48,9 @@ const BriefDisplayPanel = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
+    <div className="flex-1 overflow-y-auto animate-fade-up">
       {/* Top bar */}
-      <div className="bg-card border-b border-border px-5 py-2 flex items-center gap-2.5 flex-shrink-0">
+      <div className="bg-card border-b border-border px-5 py-2 flex items-center gap-2.5">
         <button
           onClick={() => goToStep(1)}
           className="flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-primary mr-2"
@@ -54,27 +67,59 @@ const BriefDisplayPanel = () => {
       </div>
 
       {/* Summary banner */}
-      <div className="bg-pf-mist border-b border-pf-sky px-6 py-3 flex-shrink-0">
+      <div className="bg-pf-mist border-b border-pf-sky px-6 py-3">
         <div className="max-w-3xl mx-auto">
           <div className="text-[11px] font-extrabold uppercase tracking-wider text-pf-dark/70 mb-0.5">
-            Brief Summary
+            PIE-Enriched Brief
           </div>
           <p className="text-[13px] text-foreground leading-relaxed">
             <span className="font-semibold">{currentBrief.projectTitle}</span> — {currentBrief.goal}
           </p>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {currentBrief.contentSections.length} content sections · {currentBrief.keyMessages.length} key messages
+            PIE converted your raw ideas, links, and files into a brief shaped by audience, jurisdiction, readability, and risk guardrails.
           </p>
         </div>
       </div>
 
+      <div className="border-b border-border bg-card px-6 py-4">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <EnrichmentCard
+              title="Source Inputs"
+              value={sourceValue}
+              detail={sourceDetail}
+            />
+            <EnrichmentCard
+              title="Audience Framing"
+              value={toTitleCase(audienceLabel)}
+              detail={pieResult?.audience?.flag_for_review ? "PIE flagged audience confidence for human review." : "Brief language and structure were tuned to the detected audience."}
+            />
+            <EnrichmentCard
+              title="PIE Added"
+              value="Enrichment layer applied"
+              detail={enrichmentDetail}
+            />
+            <EnrichmentCard
+              title="Guardrails Applied"
+              value={guardrailLabel}
+              detail={pieResult?.risk?.recommendations?.slice(0, 2).join(" ") || "Standard Company Name compliance guardrails applied."}
+            />
+            <EnrichmentCard
+              title="Delivery Fit"
+              value={jurisdictionLabel}
+              detail={pieResult ? `${readabilityLabel}. Tone: ${pieResult.tone.label}.` : readabilityLabel}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Editable accordion */}
-      <div className="flex-1 overflow-y-auto">
+      <div>
         <BriefAccordion brief={currentBrief} onUpdate={setCurrentBrief} />
       </div>
 
       {/* Footer */}
-      <div className="bg-card border-t border-border px-6 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="bg-card border-t border-border px-6 py-3 flex items-center justify-between">
         <button
           onClick={() => goToStep(1)}
           className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-primary"
@@ -91,5 +136,23 @@ const BriefDisplayPanel = () => {
     </div>
   );
 };
+
+function EnrichmentCard({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-secondary/40 p-3.5">
+      <div className="mb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-muted-foreground/75">{title}</div>
+      <div className="mb-1.5 text-[14px] font-semibold text-pf-dark">{value}</div>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function toTitleCase(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 export default BriefDisplayPanel;

@@ -14,7 +14,7 @@ const LAYOUTS = [
 ];
 
 const STYLES = [
-  { id: "corporate", name: "Corporate", desc: "Professional Pfizer blue" },
+  { id: "corporate", name: "Corporate", desc: "Professional Company Name blue" },
   { id: "warm", name: "Warm & Human", desc: "Patient-friendly, approachable" },
   { id: "clinical", name: "Clinical", desc: "Clean, data-driven, precise" },
   { id: "bold", name: "Bold Campaign", desc: "High-impact, vibrant" },

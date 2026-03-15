@@ -29,14 +29,14 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a Pfizer compliance and quality reviewer for a ${buildType || "webpage"} targeting ${audience || "patients"} in ${country || "Global"}.
+            content: `You are a Company Name compliance and quality reviewer for a ${buildType || "webpage"} targeting ${audience || "patients"} in ${country || "Global"}.
 Review the following content for:
-1. Brand compliance (Pfizer voice: clear, scientific, optimistic, human-centred)
+1. Brand compliance (Company Name voice: clear, scientific, optimistic, human-centred)
 2. Grammar and style
 3. Accessibility (WCAG 2.1 AA)
 4. Regulatory compliance
 
-Use this RAG context from Pfizer source documents to calibrate tone and language quality:
+Use this RAG context from Company Name source documents to calibrate tone and language quality:
 ${ragContext}
 
 Be realistic — find real issues. Score 0-100. Severity: high (blocks), medium (should fix), low (minor).`,

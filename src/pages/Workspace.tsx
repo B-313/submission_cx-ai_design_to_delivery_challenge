@@ -1,6 +1,5 @@
 import { WorkspaceProvider, useWorkspace } from "@/contexts/WorkspaceContext";
 import Header from "@/components/workspace/Header";
-import LeftSidebar from "@/components/workspace/LeftSidebar";
 import RegistrationPanel from "@/components/workspace/RegistrationPanel";
 import BriefEditorPanel from "@/components/workspace/BriefEditorPanel";
 import PreliminaryPanel from "@/components/workspace/PreliminaryPanel";
@@ -24,12 +23,9 @@ function WorkspaceInner() {
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[radial-gradient(120%_80%_at_15%_0%,hsl(var(--pf-mist))_0%,hsl(var(--background))_55%)]">
       <Header />
-      <div className="flex-1 flex overflow-hidden">
-        <LeftSidebar />
-        <main className="flex-1 flex flex-col overflow-hidden bg-card/70 backdrop-blur-[1px]">
-          <Panel />
-        </main>
-      </div>
+      <main className="flex-1 flex flex-col overflow-hidden bg-card/70 backdrop-blur-[1px]">
+        <Panel />
+      </main>
     </div>
   );
 }

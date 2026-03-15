@@ -1,59 +1,68 @@
 type RagChunk = {
   id: string;
-  source: "Pfizer Blue Book 2025" | "Pfizer Principles for Clear Health Communication";
+  source:
+    | "Company Name Brand Guide"
+    | "UK MHRA Blue Guide"
+    | "UK ABPI Code"
+    | "UK Human Medicines Regulations 2012"
+    | "EU EMA Directive 2001/83/EC"
+    | "US FDA Fair Balance"
+    | "US FDA DTC Advertising"
+    | "AU TGA Advertising Code 2021"
+    | "AU TGA Advertising Approval";
   text: string;
 };
 
 const CORPUS: RagChunk[] = [
   {
-    id: "bb-values-1",
-    source: "Pfizer Blue Book 2025",
-    text: "Pfizer decisions and communications should reflect the four core values: Courage, Excellence, Equity, and Joy. Voice should be accountable, respectful, and mission-driven.",
+    id: "cn-brand-1",
+    source: "Company Name Brand Guide",
+    text: "Company Name content should be clear, evidence-based, respectful, and patient-centred. Avoid hype, absolute claims, and unsupported certainty.",
   },
   {
-    id: "bb-integrity-1",
-    source: "Pfizer Blue Book 2025",
-    text: "Communications must be truthful, balanced, and compliant. Avoid exaggeration, absolute claims, and misleading benefit language. Use substantiated statements and approved references.",
+    id: "cn-brand-2",
+    source: "Company Name Brand Guide",
+    text: "Use plain language, short sentences, and transparent risk-benefit framing. Keep calls to action specific, safe, and appropriate for the audience.",
   },
   {
-    id: "bb-speakup-1",
-    source: "Pfizer Blue Book 2025",
-    text: "Use clear, respectful language that encourages speaking up and responsible conduct. Do not normalize cutting corners on quality, compliance, or patient safety.",
+    id: "uk-mhra-1",
+    source: "UK MHRA Blue Guide",
+    text: "United Kingdom: MHRA guidance and the Blue Guide (gov.uk/mhra, gov.uk/blue-guide [web:36]) require medicinal promotion to be accurate, balanced, and not misleading.",
   },
   {
-    id: "bb-patient-first-1",
-    source: "Pfizer Blue Book 2025",
-    text: "Patient impact should remain central. Content should communicate value to patients and healthcare stakeholders without over-promising outcomes.",
+    id: "uk-abpi-1",
+    source: "UK ABPI Code",
+    text: "United Kingdom: ABPI Code of Practice (abpi.org.uk/code-of-practice [web:26]) sets standards for promotional claims, substantiation, and responsible communications.",
   },
   {
-    id: "pp-clarity-1",
-    source: "Pfizer Principles for Clear Health Communication",
-    text: "Write in plain language. Prefer short sentences, active voice, and familiar words. Define technical terms only when needed and keep explanations concise.",
+    id: "uk-hmr-1",
+    source: "UK Human Medicines Regulations 2012",
+    text: "United Kingdom: Human Medicines Regulations 2012 (legislation.gov.uk/uksi/2012/1916 [web:24]) apply to medicinal product advertising and related restrictions.",
   },
   {
-    id: "pp-structure-1",
-    source: "Pfizer Principles for Clear Health Communication",
-    text: "Organize content with clear headings, logical sections, and scannable formatting. Front-load critical information and keep calls to action explicit.",
+    id: "eu-ema-1",
+    source: "EU EMA Directive 2001/83/EC",
+    text: "European Union: EMA framework with Directive 2001/83/EC (ema.europa.eu [web:45]) and national agencies (for example BfArM Germany, AIFA Italy) governs medicinal promotion and information quality.",
   },
   {
-    id: "pp-audience-1",
-    source: "Pfizer Principles for Clear Health Communication",
-    text: "Tailor reading level and tone to audience type. Patient-facing content should be easy to understand and action-oriented. HCP-facing content can be more technical but still clear.",
+    id: "us-fda-1",
+    source: "US FDA Fair Balance",
+    text: "United States: FDA prescription drug advertising requires fair balance under 21 CFR 202.1 (fda.gov/drugs/drug-advertising [web:46][web:51]). Benefit and risk information must be balanced and understandable.",
   },
   {
-    id: "pp-balance-1",
-    source: "Pfizer Principles for Clear Health Communication",
-    text: "Present benefits and risks responsibly. Avoid promotional superlatives and unsupported certainty. Use balanced framing and avoid ambiguity in safety language.",
+    id: "us-dtc-1",
+    source: "US FDA DTC Advertising",
+    text: "United States: Direct-to-consumer promotion follows FDA prescription drug advertising rules (fda.gov/drugs/prescription-drug-advertising).",
   },
   {
-    id: "pp-inclusion-1",
-    source: "Pfizer Principles for Clear Health Communication",
-    text: "Use inclusive, respectful, non-stigmatizing language. Avoid assumptions about identity, condition, literacy, or access.",
+    id: "au-tga-1",
+    source: "AU TGA Advertising Code 2021",
+    text: "Australia: Therapeutic Goods Advertising Code 2021 applies (tga.gov.au [web:44][web:50]) and requires compliant claim language and audience suitability.",
   },
   {
-    id: "pp-cta-1",
-    source: "Pfizer Principles for Clear Health Communication",
-    text: "Calls to action should be specific and user-centered. Tell the user exactly what to do next and what outcome to expect.",
+    id: "au-tga-2",
+    source: "AU TGA Advertising Approval",
+    text: "Australia: Pre-approval requirements may apply for advertising in specific contexts (tga.gov.au/advertising-approval).",
   },
 ];
 

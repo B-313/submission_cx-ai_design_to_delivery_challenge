@@ -1,15 +1,34 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
-import { appendAuditEvent, exportAuditJsonl } from "@/lib/audit";
+import { appendAuditEvent } from "@/lib/audit";
 import { toast } from "sonner";
+import { jsPDF } from "jspdf";
+
+interface HtmlExportMeta {
+  filename: string;
+  url: string;
+}
 
 const SubmitPanel = () => {
   const ws = useWorkspace();
   const [agreed, setAgreed] = useState(false);
+  const htmlExportRef = useRef<HtmlExportMeta | null>(null);
 
-  const handleExportHtml = () => {
-    const title = ws.currentBrief?.projectTitle || "Pfizer Project";
+  useEffect(() => {
+    return () => {
+      if (htmlExportRef.current?.url) {
+        URL.revokeObjectURL(htmlExportRef.current.url);
+      }
+    };
+  }, []);
+
+  const buildHtmlExport = (download: boolean): HtmlExportMeta => {
+    if (htmlExportRef.current?.url) {
+      URL.revokeObjectURL(htmlExportRef.current.url);
+    }
+
+    const title = ws.currentBrief?.projectTitle || "Company Name Project";
     const goal = ws.currentBrief?.goal || "";
     const sections = ws.currentBrief?.contentSections || [];
     const keyMessages = ws.currentBrief?.keyMessages || [];
@@ -47,19 +66,141 @@ const SubmitPanel = () => {
 
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
     const safeTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    a.href = url;
-    a.download = `${safeTitle || "pfizer-project"}.html`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast.success("HTML export downloaded");
+    const filename = `${safeTitle || "company-name-project"}.html`;
+
+    if (download) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success("HTML export downloaded");
+    }
+
+    const meta = { filename, url };
+    htmlExportRef.current = meta;
+    return meta;
+  };
+
+  const wrapText = (pdf: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight = 5) => {
+    const lines = pdf.splitTextToSize(text, maxWidth) as string[];
+    lines.forEach(line => {
+      pdf.text(line, x, y);
+      y += lineHeight;
+    });
+    return y;
+  };
+
+  const downloadPieReportPdf = (submittedAt: Date, htmlMeta?: HtmlExportMeta | null) => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const left = 14;
+    const right = 196;
+    const maxWidth = right - left;
+    let y = 16;
+
+    const projectTitle = ws.currentBrief?.projectTitle || "Untitled Project";
+    const submitter = `${ws.user?.firstName || ""} ${ws.user?.lastName || ""}`.trim() || "Unknown";
+    const email = ws.user?.email || "Unknown";
+    const homeRegion = ws.user?.country || "Unknown";
+    const targetRegion = ws.pieResult?.jurisdiction?.country_detected || homeRegion;
+    const buildType = ws.prelim.buildType || "Unknown";
+    const audience = ws.prelim.audience || "Unknown";
+    const score = ws.reviewData?.overallScore || 0;
+    const scoreCard = ws.reviewData?.scores || { compliance: 0, grammar: 0, brandVoice: 0, accessibility: 0 };
+    const submittedAtIso = submittedAt.toISOString();
+    const submittedAtLocal = submittedAt.toLocaleString();
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("PIE Report", left, y);
+    y += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    y = wrapText(doc, `Project: ${projectTitle}`, left, y, maxWidth);
+    y += 2;
+
+    doc.setDrawColor(220, 220, 220);
+    doc.line(left, y, right, y);
+    y += 7;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("Submission Details", left, y);
+    y += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    y = wrapText(doc, `Submitter: ${submitter}`, left, y, maxWidth);
+    y = wrapText(doc, `Email: ${email}`, left, y, maxWidth);
+    y = wrapText(doc, `Home Region: ${homeRegion}`, left, y, maxWidth);
+    y = wrapText(doc, `Target Region: ${targetRegion}`, left, y, maxWidth);
+    y = wrapText(doc, `Build Type: ${buildType}`, left, y, maxWidth);
+    y = wrapText(doc, `Audience: ${audience}`, left, y, maxWidth);
+    y = wrapText(doc, `Submission Timestamp (Local): ${submittedAtLocal}`, left, y, maxWidth);
+    y = wrapText(doc, `Submission Timestamp (ISO): ${submittedAtIso}`, left, y, maxWidth);
+
+    y += 3;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("PIE Scorecard", left, y);
+    y += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    y = wrapText(doc, `Overall Score: ${score}/100`, left, y, maxWidth);
+    y = wrapText(doc, `Compliance: ${scoreCard.compliance}/100`, left, y, maxWidth);
+    y = wrapText(doc, `Grammar: ${scoreCard.grammar}/100`, left, y, maxWidth);
+    y = wrapText(doc, `Brand Voice: ${scoreCard.brandVoice}/100`, left, y, maxWidth);
+    y = wrapText(doc, `Accessibility: ${scoreCard.accessibility}/100`, left, y, maxWidth);
+
+    y += 3;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("HTML Export", left, y);
+    y += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    if (htmlMeta?.filename) {
+      y = wrapText(doc, `File: ${htmlMeta.filename}`, left, y, maxWidth);
+    } else {
+      y = wrapText(doc, "File: No HTML export generated yet", left, y, maxWidth);
+    }
+    if (htmlMeta?.url) {
+      doc.textWithLink("Open HTML download link", left, y, { url: htmlMeta.url });
+      y += 5;
+      y = wrapText(doc, htmlMeta.url, left, y, maxWidth);
+    } else {
+      y = wrapText(doc, "Link: Not available", left, y, maxWidth);
+    }
+
+    y += 4;
+    doc.setTextColor(100, 100, 100);
+    doc.setFontSize(9);
+    wrapText(doc, "Generated by Prompt Intelligence Engine submission flow.", left, y, maxWidth);
+
+    const safeTitle = projectTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    doc.save(`${safeTitle || "project"}-pie-report.pdf`);
+  };
+
+  const handleExportHtml = () => {
+    buildHtmlExport(true);
+  };
+
+  const handleDownloadPieReport = () => {
+    const now = new Date();
+    const htmlMeta = htmlExportRef.current || buildHtmlExport(false);
+    downloadPieReportPdf(now, htmlMeta);
+    toast.success("PIE Report downloaded");
   };
 
   const handleSubmit = async () => {
     if (!agreed) return;
+    const submittedAt = new Date();
+    const htmlMeta = buildHtmlExport(true);
 
     const payload = {
       projectTitle: ws.currentBrief?.projectTitle || "Untitled Project",
@@ -96,7 +237,6 @@ const SubmitPanel = () => {
           error: err?.message || "Notification call failed",
         },
       });
-      toast.warning("Submission recorded, but reviewer notification failed");
     }
 
     ws.setSubmitted();
@@ -108,8 +248,11 @@ const SubmitPanel = () => {
         score: ws.reviewData?.overallScore || 0,
         buildType: ws.prelim.buildType || "",
         audience: ws.prelim.audience || "",
+        submittedAt: submittedAt.toISOString(),
+        htmlFile: htmlMeta.filename,
       },
     });
+    downloadPieReportPdf(submittedAt, htmlMeta);
     toast.success("Project submitted for review!");
   };
 
@@ -133,7 +276,7 @@ const SubmitPanel = () => {
           accessibility standards (WCAG 2.1 AA), and regulatory requirements applicable to the target
           jurisdiction. I understand that the IT review team will perform a final assessment before
           publication. Any content flagged during the automated review has been addressed or acknowledged.
-          This submission is subject to Pfizer's internal content governance policy.
+          This submission is subject to Company Name internal content governance policy.
         </div>
 
         <label className="flex items-center gap-2.5 mb-5 cursor-pointer">
@@ -148,10 +291,10 @@ const SubmitPanel = () => {
 
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => exportAuditJsonl()}
+            onClick={handleDownloadPieReport}
             className="w-full bg-card border border-border text-foreground rounded-md py-3 text-sm font-bold hover:border-primary hover:text-primary transition-all"
           >
-            Export Audit Log
+            Download PIE Report
           </button>
           <button
             onClick={handleExportHtml}

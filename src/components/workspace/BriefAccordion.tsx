@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils";
 
 const FIELDS: { key: keyof BriefData; label: string; maxLen: number; heading?: boolean; list?: boolean }[] = [
   { key: "projectTitle", label: "Project Name", maxLen: 80, heading: true },
-  { key: "goal", label: "Goal & Purpose", maxLen: 400 },
-  { key: "audience", label: "Target Audience", maxLen: 300 },
-  { key: "keyMessages", label: "Key Messages", maxLen: 500, list: true },
-  { key: "contentSections", label: "Page Sections", maxLen: 400, list: true },
-  { key: "informationFromSources", label: "Information Based on Documents and Links Provided", maxLen: 700 },
+  { key: "goal", label: "Goal & Purpose Refined by PIE", maxLen: 400 },
+  { key: "audience", label: "Target Audience Framed by PIE", maxLen: 300 },
+  { key: "keyMessages", label: "Key Messages Prioritised by PIE", maxLen: 500, list: true },
+  { key: "contentSections", label: "Page Sections Structured for Website Generation", maxLen: 400, list: true },
+  { key: "informationFromSources", label: "PIE Source Synthesis from Documents and Links", maxLen: 700 },
 ];
 
 interface BriefAccordionProps {

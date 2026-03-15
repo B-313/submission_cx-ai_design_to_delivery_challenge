@@ -20,12 +20,13 @@ serve(async (req) => {
     const ragChunks = retrievePfizerContext(`${enrichedPrompt}\n${buildType || ""}\n${audience || ""}\n${country || ""}`);
     const ragContext = formatRagContext(ragChunks);
     const ideationSummary = ideationAnswers ? JSON.stringify(ideationAnswers, null, 2) : "{}";
-    const sourceSummary = Array.isArray(sourceContext)
+    const hasUserSources = Array.isArray(sourceContext) && sourceContext.length > 0;
+    const sourceSummary = hasUserSources
       ? sourceContext
           .slice(0, 6)
           .map((s: any, i: number) => `Source ${i + 1}: ${s?.name || "Unnamed"} [${s?.sourceType || "unknown"}]\n${s?.excerpt || ""}`)
           .join("\n\n")
-      : "No source context provided";
+      : "No user-provided documents or links supplied";
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -35,11 +36,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `${enrichedPrompt}\n\n=== RAG BRAND CONTEXT (Pfizer docs) ===\n${ragContext}\n\nUse this context to enforce Pfizer tone, clarity, and responsible claims. Do not cite chunk IDs in the output.\n\nYou must ground the brief in user-provided context, not generic pharma boilerplate.`,
+            content: `${enrichedPrompt}\n\n=== RAG BRAND CONTEXT (Company Name docs) ===\n${ragContext}\n\nUse this context to enforce Company Name tone, clarity, and responsible claims. Do not cite chunk IDs in the output.\n\nYou must ground the brief in user-provided context, not generic pharma boilerplate.`,
           },
           {
             role: "user",
-            content: `Generate a comprehensive ideation brief for a ${buildType || "webpage"} targeting ${audience || "patients"} in ${country || "Global"}. Use the constraints above and the Pfizer RAG context. Return ONLY the JSON structure specified.\n\n=== USER RAW PROMPT ===\n${rawPrompt || ""}\n\n=== IDEATION ANSWERS ===\n${ideationSummary}\n\n=== FULL IDEATION CONTEXT ===\n${fullPrompt || ""}\n\n=== DOCUMENT/LINK EXCERPTS ===\n${sourceSummary}\n\nStrict grounding rules:\n1) Goal, key messages, and content sections must be directly relevant to the user prompt and ideation answers.\n2) If source excerpts are present, reflect their topics in "informationFromSources" and contentSections.\n3) Avoid generic statements that are not tied to the provided context.`,
+            content: `Generate a comprehensive ideation brief for a ${buildType || "webpage"} targeting ${audience || "patients"} in ${country || "Global"}. Use the constraints above and the Company Name RAG context. Return ONLY the JSON structure specified.\n\n=== USER RAW PROMPT ===\n${rawPrompt || ""}\n\n=== IDEATION ANSWERS ===\n${ideationSummary}\n\n=== FULL IDEATION CONTEXT ===\n${fullPrompt || ""}\n\n=== DOCUMENT/LINK EXCERPTS ===\n${sourceSummary}\n\nStrict grounding rules:\n1) Goal, key messages, and content sections must be directly relevant to the user prompt and ideation answers.\n2) "informationFromSources" must describe only user-provided evidence. If no files or links were supplied, say that the brief is grounded in prompt and ideation inputs only.\n3) "inspiration" must describe what PIE added or refined, such as audience shaping, compliance framing, readability, or structure.\n4) Keep contentSections concise, website-ready, and limited to 6 sections with short labels plus short purpose text.\n5) Avoid generic statements that are not tied to the provided context.`,
           },
         ],
         tools: [{
@@ -56,9 +57,10 @@ serve(async (req) => {
                 keyMessages: { type: "array", items: { type: "string" } },
                 contentSections: { type: "array", items: { type: "string" } },
                 toneAndStyle: { type: "string" },
-                inspiration: { type: "string" },
+                informationFromSources: { type: "string", description: "Summarize only user-provided documents, links, or prompt evidence. If no user sources were supplied, say that clearly and do not invent external sources." },
+                inspiration: { type: "string", description: "Describe the PIE-added enrichment context such as audience shaping, compliance framing, readability tuning, and structural choices." },
               },
-              required: ["projectTitle", "goal", "audience", "keyMessages", "contentSections", "toneAndStyle", "inspiration"],
+              required: ["projectTitle", "goal", "audience", "keyMessages", "contentSections", "toneAndStyle", "informationFromSources", "inspiration"],
               additionalProperties: false,
             },
           },

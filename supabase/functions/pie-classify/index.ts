@@ -124,7 +124,7 @@ function predictReadability(brief: string, audience: string) {
 }
 
 function buildEnrichedPrompt(brief: string, audience: any, jurisdiction: any, risk: any, tone: any, readability: any, context: any, ragContext: string) {
-  const lines = ["You are a senior Pfizer digital strategist.", ""];
+  const lines = ["You are a senior Company Name digital strategist.", ""];
   lines.push("=== PROJECT CONTEXT ===");
   if (context.buildType) lines.push(`Build type   : ${context.buildType}`);
   if (context.country) lines.push(`Country      : ${context.country}`);
@@ -143,12 +143,12 @@ function buildEnrichedPrompt(brief: string, audience: any, jurisdiction: any, ri
   lines.push("=== CONSTRAINTS ===");
   risk.recommendations.forEach((r: string) => lines.push(`• ${r}`));
   if (tone.inject_guidance) {
-    lines.push("• TONE: Write in Pfizer voice — human, optimistic, scientifically credible, no hype.");
+    lines.push("• TONE: Write in Company Name voice — human, optimistic, scientifically credible, no hype.");
   }
   if (readability.inject_simplify) lines.push(`• READABILITY: ${readability.guidance}`);
   lines.push("• Return ONLY valid JSON. No markdown.");
   lines.push("");
-  lines.push("=== BRAND RAG CONTEXT (Pfizer docs) ===");
+  lines.push("=== BRAND RAG CONTEXT (Company Name docs) ===");
   lines.push(ragContext);
   lines.push("");
   lines.push("=== USER REQUEST ===");

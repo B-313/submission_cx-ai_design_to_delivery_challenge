@@ -34,7 +34,7 @@ serve(async (req) => {
         Authorization: `Bearer ${resendApiKey}`,
       },
       body: JSON.stringify({
-        from: "Pfizer Portal <no-reply@resend.dev>",
+        from: "Company Name Portal <no-reply@resend.dev>",
         to: [reviewerEmail],
         subject: `New Portal Submission: ${body?.projectTitle || "Untitled Project"}`,
         html: `
