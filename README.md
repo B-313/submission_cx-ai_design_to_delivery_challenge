@@ -1,86 +1,122 @@
-# Welcome to your Lovable project
+# Design-to-Delivery Accelerator
 
-## Project info
+Prompt Intelligence Engine for pharma web content delivery. The app takes a project prompt, enriches it with audience and compliance context, generates a structured brief, builds a landing page draft, runs review checks, and supports governed submission.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## What This Project Is
 
-## Judge quick run (local)
+- Frontend workflow app for content teams, designers, and reviewers.
+- Prompt Intelligence Engine (PIE) runs before generation.
+- Compliance-focused review step with actionable recommendations.
+- Submission step with export and audit-oriented flow.
 
-Use this if you are evaluating locally without platform secrets:
+## Tech Stack
+
+- React + TypeScript + Vite
+- Tailwind + shadcn-ui
+- Supabase Edge Functions (server-side AI and protected operations)
+- Groq-backed generation in edge functions
+- Playwright + Vitest for testing
+
+## Live URL
+
+- Production: https://prompt-muse-ai-75.vercel.app
+
+## How To Open Locally
+
+Requirements:
+
+- Node.js 18+
+- npm
+
+Commands:
 
 ```sh
-npm i
+npm install
 npm run dev
+```
+
+Then open:
+
+- http://localhost:8080
+
+Optional production preview:
+
+```sh
+npm run build
+npm run preview
+```
+
+## Required Environment Variables
+
+Frontend (`.env`):
+
+```env
+VITE_SUPABASE_PROJECT_ID=kehzckmgtpqkstjohpaf
+VITE_SUPABASE_URL=https://kehzckmgtpqkstjohpaf.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<supabase-anon-publishable-key>
+VITE_FORCE_LOCAL_AI=false
+```
+
+Supabase Edge Function secrets:
+
+```env
+judge_access=judge_access
+GROQ_API_KEY=<valid-groq-key>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 ```
 
 Notes:
-- Judge Access Key is optional in the registration step.
-- Protected AI endpoints automatically fall back to local/demo behavior when unavailable, so the full judging workflow remains usable.
 
-## How can I edit this code?
+- Registration requires Judge Access Key.
+- Protected function calls send `x-judge-access-key` header.
 
-There are several ways of editing your application.
+## How To Use The App (Quick Flow)
 
-**Use Lovable**
+1. Register user details and enter Judge Access Key (`judge_access`).
+2. Fill ideation questionnaire (build type, audience, region).
+3. Enter project prompt and clinical/regulatory details.
+4. Click `Generate Brief`.
+5. Approve brief and move to Builder.
+6. Run/complete Review; accept or decline findings.
+7. Proceed to Submit; agree to terms and submit.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Testing
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Unit tests:
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+npm test
 ```
 
-**Edit a file directly in GitHub**
+E2E tests:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```sh
+npx playwright test
+```
 
-**Use GitHub Codespaces**
+## Deploy
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Vercel (Frontend)
 
-## What technologies are used for this project?
+Set these env vars in Vercel project settings:
 
-This project is built with:
+- `VITE_SUPABASE_PROJECT_ID`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_FORCE_LOCAL_AI=false`
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Then deploy from the target Git branch.
 
-## How can I deploy this project?
+### Supabase (Edge Functions)
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+Deploy functions:
 
-## Can I connect a custom domain to my Lovable project?
+```sh
+supabase functions deploy pie-classify generate-brief review-content notify-reviewer analyze-brief --project-ref kehzckmgtpqkstjohpaf
+```
 
-Yes, you can!
+## Repository Notes
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- Branch used for final submission updates: `working-b38c41e`
+- Keep `.env` out of commits.
+- Large artifacts (`*.zip`, extracted folders, test outputs) should stay untracked.
