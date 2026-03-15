@@ -1,7 +1,7 @@
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 
-const STEPS = ["Register", "Brief", "Builder", "Review", "Submit"];
-const PCTS = [0, 20, 45, 70, 100];
+const STEPS = ["Register", "Brief", "Design", "Builder", "Submit"];
+const PCTS = [0, 20, 45, 65, 100];
 
 const Header = () => {
   const { step, user } = useWorkspace();

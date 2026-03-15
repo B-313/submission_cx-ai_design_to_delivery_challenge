@@ -3,16 +3,16 @@ import Header from "@/components/workspace/Header";
 import LeftSidebar from "@/components/workspace/LeftSidebar";
 import RegistrationPanel from "@/components/workspace/RegistrationPanel";
 import BriefEditorPanel from "@/components/workspace/BriefEditorPanel";
+import DesignPickerPanel from "@/components/workspace/DesignPickerPanel";
 import BuilderPanel from "@/components/workspace/BuilderPanel";
-import ReviewPanel from "@/components/workspace/ReviewPanel";
 import SubmitPanel from "@/components/workspace/SubmitPanel";
 
 const PANELS = [
-  RegistrationPanel,
-  BriefEditorPanel,
-  BuilderPanel,
-  ReviewPanel,
-  SubmitPanel,
+  RegistrationPanel,   // 0
+  BriefEditorPanel,    // 1 - lego Q&A → censor → brief → approve → AI review
+  DesignPickerPanel,   // 2 - layout + style
+  BuilderPanel,        // 3 - edit + preview + final check
+  SubmitPanel,         // 4
 ];
 
 function WorkspaceInner() {

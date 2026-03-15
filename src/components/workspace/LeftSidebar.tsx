@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 const STEPS = [
   { label: "Register", num: 1 },
   { label: "Brief", num: 2 },
-  { label: "Builder", num: 3 },
-  { label: "Review", num: 4 },
+  { label: "Design", num: 3 },
+  { label: "Builder", num: 4 },
   { label: "Submit", num: 5 },
 ];
 
@@ -54,7 +54,7 @@ const LeftSidebar = () => {
               )}
               <div
                 className={cn(
-                  "w-4.5 h-4.5 rounded-full border-[1.5px] text-[9px] font-extrabold flex items-center justify-center flex-shrink-0 transition-all w-[18px] h-[18px]",
+                  "w-[18px] h-[18px] rounded-full border-[1.5px] text-[9px] font-extrabold flex items-center justify-center flex-shrink-0 transition-all",
                   isActive && "bg-primary border-primary text-primary-foreground",
                   isDone && !isActive && "bg-success border-success text-success-foreground",
                   !isActive && !isDone && "border-white/30"

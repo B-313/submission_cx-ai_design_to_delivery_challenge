@@ -1,34 +1,87 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import PIEResults from "./PIEResults";
 import BriefAccordion from "./BriefAccordion";
 import type { BriefData, PIEResult } from "@/contexts/WorkspaceContext";
-import { Upload, FileText, X, Send, SkipForward } from "lucide-react";
+import { Upload, FileText, X, Send, SkipForward, Check, ChevronRight, AlertTriangle, Sparkles } from "lucide-react";
 
-const QUESTIONS = [
-  { key: "buildType", question: "What are you building?", options: ["Website", "Webpage", "Landing Page", "Microsite"] },
-  { key: "audience", question: "Who is the target audience?", options: ["Patients", "Healthcare Providers", "Channel Partners", "Internal Teams"] },
-  { key: "country", question: "Country or region?", options: ["United States", "United Kingdom", "EU", "Global"] },
-  { key: "purpose", question: "What's the main purpose?", options: ["Inform", "Sell", "Educate", "Recruit"] },
-  { key: "goals", question: "Specific goals?", options: ["Generate leads", "Drive downloads", "Raise awareness", "Provide support"] },
-  { key: "readingLevel", question: "Reading level?", options: ["Simple (patients)", "Technical (HCPs)", "Business professional", "Internal corporate"] },
-  { key: "keyMessages", question: "Key messages to include?", freeText: true },
-  { key: "existingDocs", question: "Any existing content or documents to base this on?", options: ["Yes, uploaded above", "No, starting fresh"] },
+/* ── Lego-style question blocks ── */
+const QUESTIONS: {
+  key: string;
+  question: string;
+  subtitle?: string;
+  options?: string[];
+  multiSelect?: boolean;
+  freeText?: boolean;
+  placeholder?: string;
+}[] = [
+  {
+    key: "buildType",
+    question: "What are you building?",
+    subtitle: "Pick the format that best describes your project",
+    options: ["Website", "Webpage", "Landing Page", "Microsite", "Campaign Hub", "Portal"],
+  },
+  {
+    key: "audience",
+    question: "Who is the target audience?",
+    subtitle: "Select all that apply",
+    options: ["Patients", "Healthcare Providers (HCPs)", "Channel Partners", "Internal Teams", "Caregivers", "General Public"],
+    multiSelect: true,
+  },
+  {
+    key: "country",
+    question: "Country or region?",
+    subtitle: "Where will this content be published?",
+    options: ["United States", "United Kingdom", "EU", "Global", "Japan", "Australia"],
+  },
+  {
+    key: "purpose",
+    question: "What's the website's main purpose?",
+    subtitle: "This shapes the overall content strategy",
+    options: ["Inform", "Educate", "Sell / Promote", "Recruit", "Support", "Raise Awareness"],
+  },
+  {
+    key: "goals",
+    question: "Specific goals?",
+    subtitle: "Select all that apply",
+    options: ["Generate leads", "Drive downloads", "Raise awareness", "Provide support", "Collect registrations", "Share clinical data"],
+    multiSelect: true,
+  },
+  {
+    key: "readingLevel",
+    question: "Reading level?",
+    subtitle: "Match complexity to your audience",
+    options: ["Simple (patients / public)", "Technical (HCPs / clinical)", "Business professional", "Internal corporate"],
+  },
+  {
+    key: "keyMessages",
+    question: "Key messages to communicate?",
+    subtitle: "What should visitors take away? Type each on a new line or separate with commas.",
+    freeText: true,
+    placeholder: "e.g. Evidence-based efficacy\nPatient-centred care\nInnovative science",
+  },
+  {
+    key: "existingContent",
+    question: "Any existing content or documents?",
+    subtitle: "Upload files above or describe what you have",
+    options: ["Yes, uploaded files", "Yes, I'll paste content", "No, starting fresh"],
+  },
 ];
 
-type QAnswers = Record<string, string>;
+type QAnswers = Record<string, string | string[]>;
 
 const BriefEditorPanel = () => {
   const ws = useWorkspace();
   const [prompt, setPrompt] = useState("");
-  const [phase, setPhase] = useState<"input" | "questions" | "pie" | "brief">("input");
+  const [phase, setPhase] = useState<"input" | "questions" | "checking" | "brief" | "reviewing">("input");
   const [qIdx, setQIdx] = useState(0);
   const [answers, setAnswers] = useState<QAnswers>({});
   const [freeAnswer, setFreeAnswer] = useState("");
+  const [multiSelected, setMultiSelected] = useState<string[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<{ name: string; content: string }[]>([]);
+  const [censorWarning, setCensorWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,9 +106,27 @@ const BriefEditorPanel = () => {
     setQIdx(0);
   };
 
-  const answerQuestion = (val: string) => {
+  const answerOption = (val: string) => {
     const q = QUESTIONS[qIdx];
-    setAnswers(prev => ({ ...prev, [q.key]: val }));
+    if (q.multiSelect) {
+      setMultiSelected(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]);
+    } else {
+      setAnswers(prev => ({ ...prev, [q.key]: val }));
+      advanceQuestion();
+    }
+  };
+
+  const confirmMultiSelect = () => {
+    const q = QUESTIONS[qIdx];
+    setAnswers(prev => ({ ...prev, [q.key]: multiSelected }));
+    setMultiSelected([]);
+    advanceQuestion();
+  };
+
+  const submitFreeText = () => {
+    const q = QUESTIONS[qIdx];
+    setAnswers(prev => ({ ...prev, [q.key]: freeAnswer }));
+    setFreeAnswer("");
     advanceQuestion();
   };
 
@@ -65,58 +136,73 @@ const BriefEditorPanel = () => {
     if (qIdx < QUESTIONS.length - 1) {
       setQIdx(qIdx + 1);
       setFreeAnswer("");
+      setMultiSelected([]);
     } else {
-      runPIE();
+      runCensorCheck();
     }
   };
 
-  const buildFullPrompt = (ans: QAnswers) => {
+  const buildFullPrompt = () => {
     const fileContent = uploadedFiles.map(f => `[File: ${f.name}]\n${f.content}`).join("\n\n");
-    const contextParts = Object.entries(ans).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`);
-    return [prompt, contextParts.join("\n"), fileContent].filter(Boolean).join("\n\n---\n");
+    const parts = Object.entries(answers).filter(([, v]) => v && (Array.isArray(v) ? v.length : true)).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`);
+    return [prompt, parts.join("\n"), fileContent].filter(Boolean).join("\n\n---\n");
   };
 
-  const runPIE = async () => {
-    setPhase("pie");
-    ws.setPrelim({ buildType: answers.buildType || null, audience: answers.audience || null });
+  /* ── Silent censorship check (PIE) ── */
+  const runCensorCheck = async () => {
+    setPhase("checking");
     ws.setLoading(true);
-    ws.setActiveAgent(1);
+    setCensorWarning(null);
 
     try {
-      const fullPrompt = buildFullPrompt(answers);
+      const fullPrompt = buildFullPrompt();
+      const audience = Array.isArray(answers.audience) ? answers.audience[0] : (answers.audience as string) || "";
       const { data, error } = await supabase.functions.invoke("pie-classify", {
         body: {
           brief: fullPrompt,
-          country: answers.country || ws.user?.country || "",
-          audience: answers.audience || "",
-          buildType: answers.buildType || "",
+          country: (answers.country as string) || ws.user?.country || "",
+          audience,
+          buildType: (answers.buildType as string) || "",
         },
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
-      ws.setPieResult(data as PIEResult);
-      toast.success("Risk analysis complete — review results below");
+
+      const pieResult = data as PIEResult;
+      ws.setPieResult(pieResult);
+      ws.setPrelim({ buildType: (answers.buildType as string) || null, audience: audience || null });
+
+      // Check for censorship flags
+      if (pieResult.risk.level === "HIGH" || pieResult.pie_score < 50) {
+        setCensorWarning(
+          pieResult.risk.triggers.length > 0
+            ? `Content flagged: "${pieResult.risk.triggers.slice(0, 3).join('", "')}" detected. Please revise your input.`
+            : "Content flagged for high risk. Please revise your input."
+        );
+        toast.warning("Content flagged — please revise your prompt", { duration: 5000 });
+        setPhase("input");
+      } else {
+        // Passed — generate brief silently
+        await generateBrief(pieResult);
+      }
     } catch (err: any) {
-      toast.error(err.message || "Analysis failed");
+      toast.error(err.message || "Check failed");
       setPhase("input");
     } finally {
       ws.setLoading(false);
-      ws.setActiveAgent(null);
     }
   };
 
-  const handleApprovePie = async () => {
-    ws.approvePie();
-    ws.setLoading(true);
+  /* ── Generate structured brief ── */
+  const generateBrief = async (pieResult: PIEResult) => {
     ws.setActiveAgent(2);
-
     try {
       const { data, error } = await supabase.functions.invoke("generate-brief", {
         body: {
-          enrichedPrompt: ws.pieResult?.enriched_prompt || "",
-          buildType: answers.buildType || ws.prelim.buildType,
-          audience: answers.audience || ws.prelim.audience,
-          country: answers.country || ws.user?.country,
+          enrichedPrompt: pieResult.enriched_prompt,
+          buildType: (answers.buildType as string) || ws.prelim.buildType,
+          audience: Array.isArray(answers.audience) ? answers.audience[0] : (answers.audience as string) || ws.prelim.audience,
+          country: (answers.country as string) || ws.user?.country,
         },
       });
       if (error) throw new Error(error.message);
@@ -125,55 +211,83 @@ const BriefEditorPanel = () => {
       ws.setCurrentBrief(brief);
       ws.addBriefVersion(prompt, brief);
       setPhase("brief");
-      toast.success("Brief generated — edit any section directly");
+      toast.success("Your brief is ready — review and approve");
     } catch (err: any) {
       toast.error(err.message || "Brief generation failed");
+      setPhase("input");
+    } finally {
+      ws.setActiveAgent(null);
+    }
+  };
+
+  /* ── AI Review after approval ── */
+  const handleApproveBrief = async () => {
+    setPhase("reviewing");
+    ws.setLoading(true);
+    ws.setActiveAgent(4);
+    try {
+      const { data, error } = await supabase.functions.invoke("review-content", {
+        body: {
+          brief: ws.currentBrief,
+          buildType: ws.prelim.buildType,
+          audience: ws.prelim.audience,
+          country: ws.user?.country,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      ws.setReviewData(data);
+      ws.approvePie();
+      toast.success("AI review complete — choose your design");
+      ws.goToStep(2); // → Design step
+    } catch (err: any) {
+      toast.error(err.message || "Review failed");
+      setPhase("brief");
     } finally {
       ws.setLoading(false);
       ws.setActiveAgent(null);
     }
   };
 
-  const handleConfirmBrief = () => {
-    ws.goToStep(2);
-    toast.success("Brief confirmed — builder ready");
-  };
-
   const currentQ = QUESTIONS[qIdx];
+  const answeredCount = Object.keys(answers).length;
+  const progressPct = phase === "questions" ? ((qIdx + 1) / QUESTIONS.length) * 100 : phase === "brief" ? 100 : 0;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
       {/* Top bar */}
       <div className="bg-card border-b border-border px-5 py-2 flex items-center gap-2.5 flex-shrink-0">
-        <div className="text-[13px] font-semibold text-pf-dark flex-1">Brief Editor</div>
-        {phase === "pie" && ws.pieResult && !ws.pieApproved && (
-          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border border-warning/30 bg-warning-light text-warning">
-            PIE: {ws.pieResult.pie_grade} ({ws.pieResult.pie_score}/100)
-          </span>
-        )}
+        <div className="text-[13px] font-semibold text-pf-dark flex-1">Brief Builder</div>
         {phase === "brief" && (
-          <>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border border-primary/30 bg-pf-mist text-primary">
-              Draft ready
-            </span>
-            <button
-              onClick={handleConfirmBrief}
-              className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:bg-pf-dark transition-colors"
-            >
-              Confirm Brief →
-            </button>
-          </>
+          <button
+            onClick={handleApproveBrief}
+            className="bg-success text-success-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1.5"
+          >
+            <Check className="w-3 h-3" /> Approve Brief →
+          </button>
         )}
       </div>
 
       <div className="flex-1 overflow-y-auto bg-card">
-        {/* Phase: Input */}
+        {/* ── Phase: Input ── */}
         {phase === "input" && (
           <div className="py-8 px-6 max-w-2xl mx-auto">
             <h3 className="font-serif text-xl text-pf-dark mb-1">Describe your project</h3>
             <p className="text-[13px] text-muted-foreground mb-5">
-              Type your brief and optionally upload existing content. We'll ask a few questions to fill gaps, then analyse for risks.
+              Tell us what you want to build. We'll guide you through a few quick questions to create a complete brief.
             </p>
+
+            {/* Censor warning */}
+            {censorWarning && (
+              <div className="bg-destructive/8 border-[1.5px] border-destructive/30 rounded-lg p-3.5 mb-4 flex items-start gap-2.5 animate-fade-up">
+                <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-xs font-bold text-destructive mb-0.5">Content flagged</div>
+                  <div className="text-[12px] text-destructive/80">{censorWarning}</div>
+                </div>
+                <button onClick={() => setCensorWarning(null)} className="ml-auto text-destructive/50 hover:text-destructive"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            )}
 
             {/* File upload */}
             <div className="mb-4">
@@ -187,7 +301,7 @@ const BriefEditorPanel = () => {
                   Existing site content? Paste or upload here. AI will build from your doc.
                 </div>
               </div>
-              <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.html,.csv,.json,.doc,.docx" onChange={handleFileUpload} className="hidden" />
+              <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.html,.csv,.json,.doc,.docx,.pdf" onChange={handleFileUpload} className="hidden" />
               {uploadedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {uploadedFiles.map((f, i) => (
@@ -201,7 +315,7 @@ const BriefEditorPanel = () => {
               )}
             </div>
 
-            {/* Prompt textarea */}
+            {/* Prompt */}
             <div className="bg-secondary border-[1.5px] border-border rounded-lg p-3 focus-within:border-primary focus-within:bg-card transition-all mb-3">
               <textarea
                 value={prompt}
@@ -234,96 +348,140 @@ const BriefEditorPanel = () => {
           </div>
         )}
 
-        {/* Phase: Interactive Questions */}
+        {/* ── Phase: Lego Questions ── */}
         {phase === "questions" && currentQ && (
-          <div className="py-12 px-6 max-w-lg mx-auto animate-fade-up">
-            {/* Progress */}
-            <div className="flex items-center gap-2 mb-6">
-              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${((qIdx + 1) / QUESTIONS.length) * 100}%` }} />
+          <div className="py-10 px-6 max-w-lg mx-auto animate-fade-up">
+            {/* Progress bar */}
+            <div className="flex items-center gap-2 mb-8">
+              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-primary rounded-full transition-all duration-500 ease-out" style={{ width: `${progressPct}%` }} />
               </div>
               <span className="text-[11px] font-bold text-muted-foreground">{qIdx + 1}/{QUESTIONS.length}</span>
             </div>
 
-            <h3 className="font-serif text-lg text-pf-dark mb-4">{currentQ.question}</h3>
+            {/* Question card */}
+            <div className="bg-card border border-border rounded-xl p-6 shadow-pf mb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-extrabold flex items-center justify-center">
+                  {qIdx + 1}
+                </div>
+                <h3 className="font-serif text-lg text-pf-dark">{currentQ.question}</h3>
+              </div>
+              {currentQ.subtitle && (
+                <p className="text-[12px] text-muted-foreground ml-9 mb-4">{currentQ.subtitle}</p>
+              )}
 
-            {currentQ.options ? (
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                {currentQ.options.map(opt => (
+              {/* Options (chips) */}
+              {currentQ.options && (
+                <div className="flex flex-wrap gap-2 mb-4 ml-9">
+                  {currentQ.options.map(opt => {
+                    const isSelected = currentQ.multiSelect
+                      ? multiSelected.includes(opt)
+                      : answers[currentQ.key] === opt;
+                    return (
+                      <button
+                        key={opt}
+                        onClick={() => answerOption(opt)}
+                        className={cn(
+                          "px-4 py-2.5 rounded-lg border-[1.5px] text-sm font-medium transition-all",
+                          isSelected
+                            ? "bg-primary border-primary text-primary-foreground shadow-sm"
+                            : "bg-card border-border text-foreground hover:border-primary hover:text-primary"
+                        )}
+                      >
+                        {isSelected && <Check className="w-3 h-3 inline mr-1.5" />}
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Multi-select confirm */}
+              {currentQ.multiSelect && multiSelected.length > 0 && (
+                <div className="ml-9">
                   <button
-                    key={opt}
-                    onClick={() => answerQuestion(opt)}
-                    className={cn(
-                      "px-4 py-3 rounded-lg border-[1.5px] text-sm font-medium transition-all text-left",
-                      answers[currentQ.key] === opt
-                        ? "bg-primary border-primary text-primary-foreground"
-                        : "bg-card border-border text-foreground hover:border-primary hover:text-primary"
-                    )}
+                    onClick={confirmMultiSelect}
+                    className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold flex items-center gap-1.5"
                   >
-                    {opt}
+                    Confirm ({multiSelected.length} selected) <ChevronRight className="w-3 h-3" />
                   </button>
-                ))}
-              </div>
-            ) : (
-              <div className="mb-4">
-                <textarea
-                  value={freeAnswer}
-                  onChange={e => setFreeAnswer(e.target.value)}
-                  placeholder="Type your answer…"
-                  className="w-full bg-secondary border-[1.5px] border-border rounded-lg p-3 text-sm text-foreground resize-none min-h-[60px] outline-none focus:border-primary transition-colors"
-                />
-                <button
-                  onClick={() => { answerQuestion(freeAnswer); setFreeAnswer(""); }}
-                  disabled={!freeAnswer.trim()}
-                  className="mt-2 bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold disabled:opacity-40"
-                >
-                  Next →
-                </button>
-              </div>
-            )}
+                </div>
+              )}
 
+              {/* Free text */}
+              {currentQ.freeText && (
+                <div className="ml-9">
+                  <textarea
+                    value={freeAnswer}
+                    onChange={e => setFreeAnswer(e.target.value)}
+                    placeholder={currentQ.placeholder || "Type your answer…"}
+                    className="w-full bg-secondary border-[1.5px] border-border rounded-lg p-3 text-sm text-foreground resize-none min-h-[80px] outline-none focus:border-primary transition-colors"
+                  />
+                  <button
+                    onClick={submitFreeText}
+                    disabled={!freeAnswer.trim()}
+                    className="mt-2 bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold disabled:opacity-40 flex items-center gap-1.5"
+                  >
+                    Next <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Skip */}
             <button onClick={skipQuestion} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mx-auto">
               <SkipForward className="w-3 h-3" /> Skip this question
             </button>
           </div>
         )}
 
-        {/* Phase: PIE loading */}
-        {phase === "pie" && ws.loading && (
-          <div className="text-center py-20">
-            <div className="inline-flex items-center gap-3 bg-pf-mist border border-pf-sky rounded-lg px-6 py-4">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+        {/* ── Phase: Checking (loading) ── */}
+        {phase === "checking" && (
+          <div className="flex-1 flex items-center justify-center py-20">
+            <div className="text-center animate-fade-up">
+              <div className="inline-flex items-center gap-3 bg-pf-mist border border-pf-sky rounded-xl px-6 py-5 shadow-pf">
+                <div className="flex gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+                <div>
+                  <div className="text-sm text-pf-dark font-semibold">Preparing your brief…</div>
+                  <div className="text-[11px] text-muted-foreground">Checking content quality and generating structure</div>
+                </div>
               </div>
-              <span className="text-sm text-pf-dark font-medium">Analysing your brief for risks and compliance…</span>
             </div>
           </div>
         )}
 
-        {/* Phase: PIE Results */}
-        {phase === "pie" && ws.pieResult && !ws.pieApproved && !ws.loading && (
-          <PIEResults result={ws.pieResult} onApprove={handleApprovePie} loading={ws.loading} />
-        )}
-
-        {/* Loading: Brief generation */}
-        {ws.loading && ws.activeAgent === 2 && (
-          <div className="text-center py-20">
-            <div className="inline-flex items-center gap-3 bg-pf-mist border border-pf-sky rounded-lg px-6 py-4">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+        {/* ── Phase: Reviewing (after approve) ── */}
+        {phase === "reviewing" && (
+          <div className="flex-1 flex items-center justify-center py-20">
+            <div className="text-center animate-fade-up">
+              <div className="inline-flex items-center gap-3 bg-pf-mist border border-pf-sky rounded-xl px-6 py-5 shadow-pf">
+                <Sparkles className="w-5 h-5 text-primary animate-pulse" />
+                <div>
+                  <div className="text-sm text-pf-dark font-semibold">AI is reviewing your brief…</div>
+                  <div className="text-[11px] text-muted-foreground">Checking compliance, grammar, and brand voice</div>
+                </div>
               </div>
-              <span className="text-sm text-pf-dark font-medium">Expanding your brief into a full structured document…</span>
             </div>
           </div>
         )}
 
-        {/* Phase: Brief Accordion */}
+        {/* ── Phase: Brief preview ── */}
         {phase === "brief" && ws.currentBrief && (
-          <BriefAccordion brief={ws.currentBrief} onUpdate={ws.setCurrentBrief} />
+          <div className="animate-fade-up">
+            <div className="px-6 py-4 bg-success-light border-b border-success/20">
+              <div className="flex items-center gap-2 max-w-2xl mx-auto">
+                <Check className="w-4 h-4 text-success" />
+                <span className="text-sm font-semibold text-success">Brief generated successfully</span>
+                <span className="text-[11px] text-muted-foreground ml-2">Review each section below, edit if needed, then approve.</span>
+              </div>
+            </div>
+            <BriefAccordion brief={ws.currentBrief} onUpdate={ws.setCurrentBrief} />
+          </div>
         )}
       </div>
     </div>

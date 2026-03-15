@@ -1,16 +1,10 @@
 import { useState, useCallback, useRef } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-
-const LAYOUTS = [
-  { id: "hero", name: "Hero + Cards", desc: "Bold banner with feature grid" },
-  { id: "two-col", name: "Two Column", desc: "Content with sidebar" },
-  { id: "cards", name: "Card Grid", desc: "Feature highlights in tiles" },
-  { id: "split", name: "Split", desc: "50/50 image and content" },
-  { id: "article", name: "Article", desc: "Long-form editorial" },
-  { id: "minimal", name: "Minimal", desc: "Clean centred editorial" },
-];
+import { CheckCircle, AlertTriangle, ArrowLeft } from "lucide-react";
 
 interface CanvasBlock {
   id: string;
@@ -20,52 +14,54 @@ interface CanvasBlock {
 
 const BuilderPanel = () => {
   const ws = useWorkspace();
-  const [showLayoutPicker, setShowLayoutPicker] = useState(!ws.layout);
-  const [blocks, setBlocks] = useState<CanvasBlock[]>([]);
+  const [blocks, setBlocks] = useState<CanvasBlock[]>(() => buildBlocks(ws));
+  const [finalChecking, setFinalChecking] = useState(false);
+  const [finalResult, setFinalResult] = useState<null | { score: number; issues: string[] }>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  const handlePickLayout = (layoutId: string) => {
-    ws.setLayout(layoutId);
-    const b = ws.currentBrief;
-    const t = b?.projectTitle || "Pfizer Page";
-    const g = b?.goal || "Delivering impactful digital experiences.";
-    const km = b?.keyMessages || ["Innovation", "Patient-centred", "Compliance"];
-    const cs = b?.contentSections || ["Introduction", "Benefits", "CTA"];
-
-    const layoutBlocks: Record<string, CanvasBlock[]> = {
-      hero: [
-        { id: "1", name: "Hero Banner", fields: [{ label: "Headline", value: t, heading: true }, { label: "Subheadline", value: g }] },
-        { id: "2", name: "Feature Cards", fields: km.slice(0, 3).map((m, i) => ({ label: `Card ${i + 1}`, value: m })) },
-        { id: "3", name: "Call to Action", fields: [{ label: "CTA Text", value: "Learn how Pfizer is transforming healthcare." }] },
-      ],
-      "two-col": [
-        { id: "1", name: "Main Content", fields: [{ label: "Title", value: t, heading: true }, { label: "Body", value: g + "\n\n" + cs.join(" — ") }] },
-        { id: "2", name: "Sidebar", fields: km.map((m, i) => ({ label: `Point ${i + 1}`, value: m })) },
-      ],
-      cards: [
-        { id: "1", name: "Header", fields: [{ label: "Title", value: t, heading: true }, { label: "Intro", value: g }] },
-        ...km.slice(0, 3).map((m, i) => ({ id: String(i + 2), name: `Card ${i + 1}`, fields: [{ label: "Heading", value: m, heading: true }, { label: "Body", value: "Content auto-populated from your brief." }] })),
-      ],
-      split: [
-        { id: "1", name: "Left — Content", fields: [{ label: "Headline", value: t, heading: true }, { label: "Description", value: g }] },
-        { id: "2", name: "Right — Media", fields: [{ label: "Caption", value: "[Insert visual asset here]" }] },
-      ],
-      article: [
-        { id: "1", name: "Article", fields: [{ label: "Title", value: t, heading: true }, { label: "Lead", value: g }, { label: "Body", value: cs.join("\n\n") }] },
-      ],
-      minimal: [
-        { id: "1", name: "Page Content", fields: [{ label: "Title", value: t, heading: true }, { label: "Body", value: g + "\n\n" + km.join("\n") }] },
-      ],
-    };
-
-    setBlocks(layoutBlocks[layoutId] || layoutBlocks.hero);
-    setShowLayoutPicker(false);
-  };
 
   const updateField = (blockIdx: number, fieldIdx: number, value: string) => {
     setBlocks(prev => prev.map((b, bi) =>
       bi === blockIdx ? { ...b, fields: b.fields.map((f, fi) => fi === fieldIdx ? { ...f, value } : f) } : b
     ));
+    setFinalResult(null); // reset final check on edit
+  };
+
+  const runFinalCheck = async () => {
+    setFinalChecking(true);
+    try {
+      const contentText = blocks.map(b => b.fields.map(f => f.value).join("\n")).join("\n\n");
+      const { data, error } = await supabase.functions.invoke("review-content", {
+        body: {
+          brief: contentText,
+          buildType: ws.prelim.buildType,
+          audience: ws.prelim.audience,
+          country: ws.user?.country,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      const score = data.overallScore || 0;
+      const issues = [
+        ...(data.complianceIssues || []).map((i: any) => i.issue),
+        ...(data.grammarIssues || []).map((i: any) => i.issue),
+      ];
+      setFinalResult({ score, issues });
+
+      if (score >= 80) {
+        toast.success(`Final check passed (${score}/100) — ready to submit!`);
+      } else {
+        toast.warning(`Score: ${score}/100 — review issues below`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Final check failed");
+    } finally {
+      setFinalChecking(false);
+    }
+  };
+
+  const handleProceedToSubmit = () => {
+    ws.goToStep(4);
   };
 
   const generatePreviewHtml = useCallback(() => {
@@ -98,53 +94,45 @@ const BuilderPanel = () => {
     return html;
   }, [blocks, ws.currentBrief]);
 
-  if (showLayoutPicker) {
-    return (
-      <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
-        <div className="bg-card border-b border-border px-5 py-2.5 flex items-center gap-3 flex-shrink-0">
-          <span className="text-[13px] font-semibold text-pf-dark flex-1">Choose Layout</span>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="text-sm font-semibold text-foreground mb-4">Choose a layout — content auto-populates from your brief</div>
-          <div className="grid grid-cols-3 gap-3">
-            {LAYOUTS.map(l => (
-              <button key={l.id} onClick={() => handlePickLayout(l.id)}
-                className={cn(
-                  "bg-card border-2 rounded-lg overflow-hidden transition-all shadow-pf hover:border-primary hover:shadow-pf-md hover:-translate-y-0.5 text-left",
-                  ws.layout === l.id ? "border-primary shadow-[0_0_0_3px_hsla(200,100%,41%,0.18)]" : "border-border"
-                )}>
-                <div className="aspect-video bg-secondary p-2 flex flex-col gap-1">
-                  <div className="flex-1 bg-gradient-to-br from-pf-dark to-pf-blue rounded flex items-center justify-center">
-                    <div className="w-[60%] h-1 bg-white/70 rounded-full" />
-                  </div>
-                  <div className="flex gap-1 h-6">
-                    <div className="flex-1 bg-card border border-border rounded" />
-                    <div className="flex-1 bg-card border border-border rounded" />
-                    <div className="flex-1 bg-card border border-border rounded" />
-                  </div>
-                </div>
-                <div className="p-2.5">
-                  <div className="text-xs font-bold text-foreground">{l.name}</div>
-                  <div className="text-[11px] text-muted-foreground">{l.desc}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
       <div className="bg-card border-b border-border px-4 py-2 flex items-center gap-3 flex-shrink-0">
+        <button onClick={() => ws.goToStep(2)} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+          <ArrowLeft className="w-3 h-3" /> Design
+        </button>
         <span className="text-[13px] font-semibold text-pf-dark flex-1">Builder</span>
-        <button onClick={() => setShowLayoutPicker(true)} className="text-xs text-primary font-semibold hover:underline">Change Layout</button>
-        <button onClick={() => ws.goToStep(3)}
-          className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:bg-pf-dark transition-colors">
-          Proceed to Review →
+
+        {finalResult && finalResult.score >= 80 && (
+          <button onClick={handleProceedToSubmit}
+            className="bg-success text-success-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:opacity-90 flex items-center gap-1.5">
+            <CheckCircle className="w-3 h-3" /> Submit →
+          </button>
+        )}
+
+        <button
+          onClick={runFinalCheck}
+          disabled={finalChecking}
+          className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-bold hover:bg-pf-dark transition-colors disabled:opacity-50 flex items-center gap-1.5"
+        >
+          {finalChecking ? "Checking…" : "Final Check"}
         </button>
       </div>
+
+      {/* Final check result banner */}
+      {finalResult && (
+        <div className={cn(
+          "px-5 py-2.5 border-b flex items-center gap-2 text-xs font-semibold animate-fade-up",
+          finalResult.score >= 80
+            ? "bg-success-light border-success/20 text-success"
+            : "bg-destructive/8 border-destructive/20 text-destructive"
+        )}>
+          {finalResult.score >= 80 ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+          Score: {finalResult.score}/100
+          {finalResult.score < 80 && finalResult.issues.length > 0 && (
+            <span className="font-normal ml-2">— {finalResult.issues[0]}</span>
+          )}
+        </div>
+      )}
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         <ResizablePanel defaultSize={45} minSize={30}>
@@ -194,5 +182,42 @@ const BuilderPanel = () => {
     </div>
   );
 };
+
+function buildBlocks(ws: ReturnType<typeof import("@/contexts/WorkspaceContext").useWorkspace>): CanvasBlock[] {
+  const b = ws.currentBrief;
+  const layout = ws.layout || "hero";
+  const t = b?.projectTitle || "Pfizer Page";
+  const g = b?.goal || "Delivering impactful digital experiences.";
+  const km = b?.keyMessages || ["Innovation", "Patient-centred", "Compliance"];
+  const cs = b?.contentSections || ["Introduction", "Benefits", "CTA"];
+
+  const layoutBlocks: Record<string, CanvasBlock[]> = {
+    hero: [
+      { id: "1", name: "Hero Banner", fields: [{ label: "Headline", value: t, heading: true }, { label: "Subheadline", value: g }] },
+      { id: "2", name: "Feature Cards", fields: km.slice(0, 3).map((m, i) => ({ label: `Card ${i + 1}`, value: m })) },
+      { id: "3", name: "Call to Action", fields: [{ label: "CTA Text", value: "Learn how Pfizer is transforming healthcare." }] },
+    ],
+    "two-col": [
+      { id: "1", name: "Main Content", fields: [{ label: "Title", value: t, heading: true }, { label: "Body", value: g + "\n\n" + cs.join(" — ") }] },
+      { id: "2", name: "Sidebar", fields: km.map((m, i) => ({ label: `Point ${i + 1}`, value: m })) },
+    ],
+    cards: [
+      { id: "1", name: "Header", fields: [{ label: "Title", value: t, heading: true }, { label: "Intro", value: g }] },
+      ...km.slice(0, 3).map((m, i) => ({ id: String(i + 2), name: `Card ${i + 1}`, fields: [{ label: "Heading", value: m, heading: true }, { label: "Body", value: "Content from your brief." }] })),
+    ],
+    split: [
+      { id: "1", name: "Left — Content", fields: [{ label: "Headline", value: t, heading: true }, { label: "Description", value: g }] },
+      { id: "2", name: "Right — Media", fields: [{ label: "Caption", value: "[Insert visual asset here]" }] },
+    ],
+    article: [
+      { id: "1", name: "Article", fields: [{ label: "Title", value: t, heading: true }, { label: "Lead", value: g }, { label: "Body", value: cs.join("\n\n") }] },
+    ],
+    minimal: [
+      { id: "1", name: "Page Content", fields: [{ label: "Title", value: t, heading: true }, { label: "Body", value: g + "\n\n" + km.join("\n") }] },
+    ],
+  };
+
+  return layoutBlocks[layout] || layoutBlocks.hero;
+}
 
 export default BuilderPanel;
