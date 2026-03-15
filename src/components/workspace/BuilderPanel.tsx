@@ -308,7 +308,7 @@ const BuilderPanel = () => {
       const is401 = msg.includes("non-2xx") || msg.includes("401") || msg.includes("Unauthorized");
       toast.error(
         is401
-          ? "AI content check service is unavailable right now. You can continue and run the full Review step with local fallback."
+          ? "AI content check requires a valid judge access key and live cloud services."
           : msg || "Final check failed"
       );
     } finally {

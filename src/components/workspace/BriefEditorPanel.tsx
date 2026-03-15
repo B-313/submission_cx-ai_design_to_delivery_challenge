@@ -82,7 +82,7 @@ const QUESTIONS: {
   {
     key: "themesTopics",
     question: "What are the themes/topics covered?",
-    subtitle: "List key topics, one per line",
+    subtitle: "List key topics, one per line — these will be used to create sections for your page",
     freeText: true,
     placeholder: "Topic 1\nTopic 2\nTopic 3",
   },
@@ -109,6 +109,15 @@ const QUESTIONS: {
 ];
 
 type QAnswers = Record<string, string | string[]>;
+
+type GenerationInput = {
+  userRawPrompt: string;
+  questionnaireAnswers: Record<string, string | string[]>;
+  documents: { name: string; source: string; excerpt: string }[];
+  links: { name: string; url: string; excerpt: string }[];
+};
+
+const QUESTION_LABELS = Object.fromEntries(QUESTIONS.map(q => [q.key, q.question]));
 
 const hasValue = (val: string | string[] | undefined) => {
   if (Array.isArray(val)) return val.length > 0;
@@ -180,6 +189,32 @@ const normalizeLayoutChoice = (choice?: string | string[]) => {
   }
 };
 
+const toTitleCase = (value: string) =>
+  value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+
+const sanitizeSectionTitle = (value: string) =>
+  toTitleCase(
+    value
+      .replace(/^[-*•\s]+/, "")
+      .replace(/["'`]/g, "")
+      .replace(/\([^)]*\)/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .slice(0, 70)
+  );
+
+const extractListLines = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function buildFallbackPieResult(briefText: string, answerSet: QAnswers, countryHint: string, audienceHint: string): PIEResult {
   const audience = audienceHint || "patients";
   const country = countryHint || "Global";
@@ -202,14 +237,25 @@ function buildFallbackPieResult(briefText: string, answerSet: QAnswers, countryH
     risk: { risk_score: riskScore, level: riskScore >= 0.75 ? "HIGH" : riskScore >= 0.4 ? "MEDIUM" : "LOW", triggers: riskTriggers, recommendations: ["Review and validate claims before publishing"] },
     tone: { tone_score: 0.78, label: "borderline", inject_guidance: false },
     readability: { predicted_grade: 9, target_grade: audience.toLowerCase().includes("patient") ? 8 : 11, target_label: "Fallback", inject_simplify: false, guidance: "Fallback readability" },
-    enriched_prompt: [
-      "You are a senior Company Name strategist.",
-      `Build type: ${(answerSet.buildType as string) || "Webpage"}`,
-      `Audience: ${audience}`,
-      `Country: ${country}`,
-      "Use clear, compliant wording and output structured JSON.",
-      briefText,
-    ].join("\n"),
+    enriched_prompt: JSON.stringify({
+      role: "Senior Pfizer digital strategist",
+      project_context: {
+        buildType: (answerSet.buildType as string) || "Webpage",
+        audience,
+        country,
+      },
+      pie_output: {
+        audience,
+        riskLevel: riskScore >= 0.75 ? "HIGH" : riskScore >= 0.4 ? "MEDIUM" : "LOW",
+        readabilityTarget: audience.toLowerCase().includes("patient") ? "Grade 8" : "Grade 11",
+      },
+      generation_rules: [
+        "Return valid JSON only.",
+        "Ground all fields in the user prompt, questionnaire answers, and uploaded materials.",
+        "Tone, style, and colours are applied automatically from branding downstream.",
+      ],
+      user_request: briefText,
+    }, null, 2),
   };
 }
 
@@ -226,6 +272,7 @@ const BriefEditorPanel = () => {
   const [webpageLink, setWebpageLink] = useState("");
   const [webpageLinkName, setWebpageLinkName] = useState("");
   const [censorWarning, setCensorWarning] = useState<string | null>(null);
+  const [uploadTermsAccepted, setUploadTermsAccepted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -240,7 +287,7 @@ const BriefEditorPanel = () => {
       if (typeof draft.webpageLinkName === "string") setWebpageLinkName(draft.webpageLinkName);
       if (Array.isArray(draft.questionQueue)) setQuestionQueue(draft.questionQueue);
       if (typeof draft.qPos === "number") setQPos(Math.max(0, draft.qPos));
-      if (draft.phase && draft.phase !== "checking") setPhase(draft.phase);
+      if (draft.phase && draft.phase !== "checking") setPhase(draft.phase === "questions" ? "input" : draft.phase);
     } catch {
       // Ignore malformed local draft.
     }
@@ -277,7 +324,13 @@ const BriefEditorPanel = () => {
     }
   }, [phase, questionQueue.length]);
 
-  const confirmMaterialGuideline = () => window.confirm("Confirm this material is safe-for-work and complies with upload guidelines.");
+  const confirmMaterialGuideline = () => {
+    if (!uploadTermsAccepted) {
+      toast.warning("Please accept the material upload terms before uploading.");
+      return false;
+    }
+    return true;
+  };
 
   const runSafetyAgentCheck = (textToScan: string) => {
     const scan = evaluateMaterialSafety(textToScan);
@@ -301,14 +354,9 @@ const BriefEditorPanel = () => {
     for (const file of Array.from(files)) {
       if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name} too large (max 5MB)`); continue; }
       if (!confirmMaterialGuideline()) {
-        toast.warning(`Skipped ${file.name} (guideline confirmation not provided)`);
         continue;
       }
-      const customName = window.prompt("Enter a name for this material", file.name)?.trim();
-      if (!customName) {
-        toast.warning(`Skipped ${file.name} (name required)`);
-        continue;
-      }
+      const customName = file.name.replace(/\.[^/.]+$/, "") || file.name;
       try {
         const ext = getFileExtension(file.name);
         const rawText = await extractDocumentText(file);
@@ -378,7 +426,122 @@ const BriefEditorPanel = () => {
     setUploadedFiles(prev => [...prev, { id: String(Date.now()) + Math.random().toString(36).slice(2, 5), name, content, materialId, source: url, sourceType: "link" }]);
     setWebpageLink("");
     setWebpageLinkName("");
-    toast.success(content.startsWith("Webpage link:") ? "Link added (content unavailable)" : `${name}: ${Math.ceil(content.length / 100) / 10}K chars extracted`);
+    toast.success(
+      content.startsWith("Webpage link:")
+        ? `Link "${name}" added — URL saved for brief context`
+        : `"${name}" added — ${Math.ceil(content.length / 100) / 10}K chars extracted from page`
+    );
+  };
+
+  const getAnswerString = (key: string) => typeof answers[key] === "string" ? String(answers[key]) : "";
+
+  const getAnswerArray = (key: string) => Array.isArray(answers[key]) ? answers[key] as string[] : [];
+
+  const setAnswerValue = (key: string, value: string | string[]) => {
+    setAnswers(prev => ({ ...prev, [key]: value }));
+  };
+
+  const toggleMultiAnswer = (key: string, value: string) => {
+    setAnswers(prev => {
+      const current = Array.isArray(prev[key]) ? prev[key] as string[] : [];
+      return {
+        ...prev,
+        [key]: current.includes(value) ? current.filter(item => item !== value) : [...current, value],
+      };
+    });
+  };
+
+  const normalizeAnswerSet = (answerSet: QAnswers): QAnswers => {
+    const normalized: QAnswers = {};
+    const buildType = typeof answerSet.buildType === "string" ? answerSet.buildType : "";
+    const audienceChoice = typeof answerSet.audience === "string" ? answerSet.audience : "";
+    const audienceOther = typeof answerSet.audienceOther === "string" ? answerSet.audienceOther.trim() : "";
+    const websitePages = Array.isArray(answerSet.websitePages) ? answerSet.websitePages : [];
+    const websitePagesOther = typeof answerSet.websitePagesOther === "string" ? answerSet.websitePagesOther : "";
+
+    QUESTIONS.forEach((question) => {
+      const rawValue = answerSet[question.key];
+
+      if (question.key === "audience") {
+        const resolvedAudience = audienceChoice === "General or other" ? audienceOther : audienceChoice;
+        if (resolvedAudience) normalized.audience = resolvedAudience;
+        return;
+      }
+
+      if (question.key === "websitePages") {
+        if (buildType !== "Website") return;
+        const customPages = extractListLines(websitePagesOther)
+          .map(sanitizeSectionTitle)
+          .filter(Boolean);
+        const mergedPages = [...websitePages, ...customPages]
+          .filter(Boolean)
+          .filter((value, idx, all) => all.findIndex(item => item.toLowerCase() === value.toLowerCase()) === idx);
+        if (mergedPages.length > 0) normalized.websitePages = mergedPages;
+        return;
+      }
+
+      if (question.key === "websiteLayout") return;
+      if (question.key === "productName" && answerSet.specificProduct !== "Yes") return;
+
+      if (hasValue(rawValue)) normalized[question.key] = rawValue;
+    });
+
+    return normalized;
+  };
+
+  const buildGenerationInput = (answerSet: QAnswers): GenerationInput => {
+    const normalizedAnswers = normalizeAnswerSet(answerSet);
+
+    return {
+      userRawPrompt: prompt.trim(),
+      questionnaireAnswers: Object.fromEntries(
+        Object.entries(normalizedAnswers)
+          .filter(([key, value]) => QUESTION_LABELS[key] && hasValue(value))
+          .map(([key, value]) => [QUESTION_LABELS[key], value])
+      ),
+      documents: uploadedFiles
+        .filter(file => file.sourceType === "document")
+        .map(file => ({
+          name: file.name,
+          source: file.source,
+          excerpt: file.content.slice(0, 3000),
+        })),
+      links: uploadedFiles
+        .filter(file => file.sourceType === "link")
+        .map(file => ({
+          name: file.name,
+          url: file.source,
+          excerpt: file.content.slice(0, 3000),
+        })),
+    };
+  };
+
+  const invokeProtectedWithRetry = async <TBody extends Record<string, unknown>, TResponse>(
+    functionName: string,
+    body: TBody,
+    attempts = 3,
+  ): Promise<TResponse> => {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const { data, error } = await invokeProtectedFunction<TBody, TResponse>(functionName, body);
+        if (error) throw error;
+        const payload = data as any;
+        if (payload?.error) {
+          throw new Error(typeof payload.error === "string" ? payload.error : "Protected function failed");
+        }
+        if (!data) throw new Error("Empty response from protected function");
+        return data;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error("Unknown protected invocation error");
+        if (attempt < attempts) {
+          await wait(attempt * 700);
+        }
+      }
+    }
+
+    throw lastError ?? new Error("Protected invocation failed");
   };
 
   const getSeedAnswers = (): QAnswers => ({});
@@ -407,19 +570,9 @@ const BriefEditorPanel = () => {
   const handleStartQuestions = () => {
     if (!prompt.trim() && uploadedFiles.length === 0) return;
 
-    const seededAnswers = getSeedAnswers();
-    const queue = getMissingQuestionQueue(seededAnswers);
-    setAnswers(seededAnswers);
-
-    if (queue.length === 0) {
-      toast.success("Generating your brief");
-      runCensorCheck(seededAnswers);
-      return;
-    }
-
-    setQuestionQueue(queue);
-    setQPos(0);
-    setPhase("questions");
+    const normalizedAnswers = normalizeAnswerSet(answers);
+    toast.success("Generating your brief");
+    runCensorCheck(normalizedAnswers);
   };
 
   const answerOption = (val: string) => {
@@ -501,45 +654,58 @@ const BriefEditorPanel = () => {
   };
 
   const buildFallbackBrief = (answerSet: QAnswers): BriefData => {
-    const buildType = (answerSet.buildType as string) || ws.prelim.buildType || "Webpage";
-    const aud = Array.isArray(answerSet.audience) ? answerSet.audience[0] : (answerSet.audience as string) || ws.prelim.audience || "Audience";
-    const region = (answerSet.region as string) || ws.user?.country || "Global";
+    const normalizedAnswers = normalizeAnswerSet(answerSet);
+    const buildType = (normalizedAnswers.buildType as string) || ws.prelim.buildType || "Webpage";
+    const aud = Array.isArray(normalizedAnswers.audience) ? normalizedAnswers.audience[0] : (normalizedAnswers.audience as string) || ws.prelim.audience || "Audience";
+    const region = (normalizedAnswers.region as string) || ws.user?.country || "Global";
     const section = "Main Page";
-    const themes = String(answerSet.themesTopics || "")
-      .split("\n")
-      .map(v => v.trim())
-      .filter(Boolean)
-      .slice(0, 5);
-    const selectedPageOptions = Array.isArray(answerSet.websitePages)
-      ? answerSet.websitePages.map(v => String(v).trim()).filter(Boolean)
+    const themes = extractListLines(String(normalizedAnswers.themesTopics || "")).slice(0, 8);
+    const selectedPageOptions = Array.isArray(normalizedAnswers.websitePages)
+      ? normalizedAnswers.websitePages.map(v => String(v).trim()).filter(Boolean)
       : [];
-    const websiteLayout = (answerSet.websiteLayout as string) || "";
     const fileNames = uploadedFiles.map(f => `${f.name} (${f.sourceType})`).join(", ");
-    const regulatory = String(answerSet.evidenceAndDisclaimers || "").trim();
+    const regulatory = String(normalizedAnswers.evidenceAndDisclaimers || "").trim();
+    const promptLines = extractListLines(prompt);
+    const explicitRequirements = promptLines
+      .filter((line) => /^[-*•]/.test(line) || /:\s/.test(line))
+      .map((line) => line.replace(/^[-*•\s]+/, "").trim())
+      .filter((line) => line.length > 8)
+      .slice(0, 12);
     const projectSeed = prompt || "Clear, compliant communication for the target audience.";
+    const sourceAnchors = [...themes, ...explicitRequirements].slice(0, 10);
+
+    const inferredSections = sourceAnchors
+      .map((line) => sanitizeSectionTitle(line))
+      .filter(Boolean)
+      .filter((line, idx, arr) => arr.findIndex((x) => x.toLowerCase() === line.toLowerCase()) === idx)
+      .slice(0, 6);
+
+    const bestSections = inferredSections.length > 0
+      ? inferredSections
+      : [
+          "Condition Overview and Support Goals",
+          "Treatment Journey and Week-by-Week Expectations",
+          "MHRA-Approved Safety and Side Effect Guidance",
+          "Daily Diary and Downloadable Resources",
+          "Patient Stories and UK Support Services",
+          "Help, Helpline, and Next Steps",
+        ];
 
     return {
       projectTitle: `${buildType}: ${section}`,
-      goal: `Create clear and compliant content tailored for ${aud} in ${region}.`,
+      goal: `Create a practical patient-support hub for ${aud} in ${region} with clear MHRA-aligned guidance, weekly treatment clarity, and actionable support resources.`,
       audience: `${aud} in ${region}. Keep language clear, specific, and compliant for this audience type.`,
-      keyMessages: themes.length > 0 ? themes : [projectSeed, "Use approved, compliant statements.", "Guide users to the next action."],
-      contentSections: [
-        `Overview - ${projectSeed}`,
-        `Patient support essentials - ${themes.slice(0, 2).join(" and ") || "core treatment guidance"}`,
-        regulatory ? "Approved medical information - MHRA-compliant indication, side effects, and disclaimers" : "Approved medical information - only validated claims and signposting",
-        buildType === "Website" && websiteLayout ? `Page experience - ${websiteLayout} layout for clear navigation` : "Page experience - clear path through key support information",
-        selectedPageOptions.length > 0 ? `Priority modules - ${selectedPageOptions.slice(0, 3).join(", ")}` : "Priority modules - tools, resources, and next steps",
-        "CTA and support - helplines, downloads, and follow-up actions",
-      ].filter(Boolean).slice(0, 6),
+      keyMessages: bestSections,
+      contentSections: bestSections,
       toneAndStyle: "Clear, concise, and compliant Company Name tone. Avoid promotional exaggeration; keep user-first language.",
       informationFromSources: [
         fileNames ? `User-provided documents/links: ${fileNames}` : "No supporting documents or links were uploaded; brief is grounded in prompt and ideation inputs only.",
         regulatory ? `Regulatory/clinical inputs: ${regulatory}` : "No regulatory/clinical evidence block provided.",
       ].join("\n"),
       inspiration: [
-        `PIE refinement: audience tuned for ${aud} in ${region}.`,
-        regulatory ? "PIE applied guardrails for regulated medical content and approved-claim discipline." : "PIE applied standard Company Name compliance framing.",
-        websiteLayout ? `PIE structured the brief for a ${websiteLayout} experience.` : "PIE structured the brief for a clear, scannable website journey.",
+        `Prompt intelligence refinement: audience tuned for ${aud} in ${region}.`,
+        regulatory ? "Applied guardrails for regulated medical content and approved-claim discipline." : "Applied standard Company Name compliance framing.",
+        "Structured the brief for a clear, scannable website journey.",
       ].join(" "),
     };
   };
@@ -555,53 +721,31 @@ const BriefEditorPanel = () => {
   };
 
   const buildFullPrompt = (answerSet: QAnswers) => {
-    const questionLabelByKey = Object.fromEntries(QUESTIONS.map(q => [q.key, q.question]));
-    const fileContent = uploadedFiles.map(f => `[File: ${f.name}]\n${f.content}`).join("\n\n");
-    const parts = Object.entries(answerSet)
-      .filter(([, v]) => hasValue(v))
-      .map(([k, v]) => `${questionLabelByKey[k] || k}: ${Array.isArray(v) ? v.join(", ") : v}`);
-    return [prompt, parts.join("\n"), fileContent].filter(Boolean).join("\n\n---\n");
+    return JSON.stringify(buildGenerationInput(answerSet), null, 2);
   };
 
   /* ── Silent censorship check (PIE) ── */
   const runCensorCheck = async (answerSet: QAnswers = answers) => {
+    const normalizedAnswers = normalizeAnswerSet(answerSet);
     setPhase("checking");
     ws.setLoading(true);
     setCensorWarning(null);
 
     try {
-      const fullPrompt = buildFullPrompt(answerSet);
-      const audience = Array.isArray(answerSet.audience) ? answerSet.audience[0] : (answerSet.audience as string) || "";
-      let pieResult: PIEResult;
-
-      try {
-        const timedPieInvoke = Promise.race([
-          invokeProtectedFunction("pie-classify", {
+      const fullPrompt = buildFullPrompt(normalizedAnswers);
+      const audience = Array.isArray(normalizedAnswers.audience) ? normalizedAnswers.audience[0] : (normalizedAnswers.audience as string) || "";
+      const pieResult = await Promise.race([
+        invokeProtectedWithRetry<Record<string, unknown>, PIEResult>("pie-classify", {
             brief: fullPrompt,
-            country: (answerSet.region as string) || ws.user?.country || "",
+            country: (normalizedAnswers.region as string) || ws.user?.country || "",
             audience,
-            buildType: (answerSet.buildType as string) || "",
+            buildType: (normalizedAnswers.buildType as string) || "",
           }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("PIE classification timeout")), 8000)),
-        ]);
-        const { data, error } = await timedPieInvoke as any;
-        if (error) throw new Error(error.message);
-        if (data?.error) throw new Error(data.error);
-        pieResult = data as PIEResult;
-      } catch {
-        pieResult = buildFallbackPieResult(
-          fullPrompt,
-          answerSet,
-          (answerSet.region as string) || ws.user?.country || "",
-          audience
-        );
-        // PIE classifier unavailable — fallback used silently
-      }
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("PIE classification timeout after retries")), 18000)),
+      ]);
 
       ws.setPieResult(pieResult);
-      ws.setPrelim({ buildType: (answerSet.buildType as string) || null, audience: audience || null });
-      const selectedLayout = normalizeLayoutChoice(answerSet.websiteLayout);
-      if (selectedLayout) ws.setLayout(selectedLayout);
+      ws.setPrelim({ buildType: (normalizedAnswers.buildType as string) || null, audience: audience || null });
       appendAuditEvent({
         eventType: "pie_run",
         actor: ws.user?.email || "unknown-user",
@@ -611,15 +755,15 @@ const BriefEditorPanel = () => {
           audience: pieResult.audience?.audience,
           jurisdiction: pieResult.jurisdiction?.body,
           risk_level: pieResult.risk?.level,
-          country: (answerSet.region as string) || ws.user?.country || "",
-          buildType: (answerSet.buildType as string) || "",
+          country: (normalizedAnswers.region as string) || ws.user?.country || "",
+          buildType: (normalizedAnswers.buildType as string) || "",
         },
       });
 
       // Ideation only runs censorship checks in the background; flags are handled in Builder final checks.
-      await generateBrief(pieResult, answerSet);
+      await generateBrief(pieResult, normalizedAnswers);
     } catch (err: any) {
-      toast.error(err.message || "Check failed");
+      toast.error(err.message || "PIE classification failed");
       setPhase("input");
     } finally {
       ws.setLoading(false);
@@ -630,42 +774,59 @@ const BriefEditorPanel = () => {
   const generateBrief = async (pieResult: PIEResult, answerSet: QAnswers = answers) => {
     ws.setActiveAgent(2);
     try {
-      let brief: BriefData | null = null;
+      const normalizedAnswers = normalizeAnswerSet(answerSet);
+      const generationInput = buildGenerationInput(normalizedAnswers);
 
-      try {
-        const timedInvoke = Promise.race([
-          invokeProtectedFunction("generate-brief", {
+      const brief = await Promise.race([
+        invokeProtectedWithRetry("generate-brief", {
             enrichedPrompt: pieResult.enriched_prompt,
+            pieContext: {
+              audience: pieResult.audience,
+              jurisdiction: pieResult.jurisdiction,
+              risk: pieResult.risk,
+              tone: pieResult.tone,
+              readability: pieResult.readability,
+              breakdown: pieResult.breakdown,
+              score: {
+                pie_score: pieResult.pie_score,
+                pie_grade: pieResult.pie_grade,
+                interpretation: pieResult.pie_interpretation,
+              },
+            },
+            generationInput,
             rawPrompt: prompt,
-            fullPrompt: buildFullPrompt(answerSet),
-            ideationAnswers: answerSet,
+            fullPrompt: buildFullPrompt(normalizedAnswers),
+            ideationAnswers: normalizedAnswers,
             sourceContext: uploadedFiles.map(f => ({
               name: f.name,
               sourceType: f.sourceType,
               source: f.source,
               excerpt: f.content.slice(0, 3000),
             })),
-            buildType: (answerSet.buildType as string) || ws.prelim.buildType,
-            audience: Array.isArray(answerSet.audience) ? answerSet.audience[0] : (answerSet.audience as string) || ws.prelim.audience,
-            country: (answerSet.region as string) || ws.user?.country,
+            buildType: (normalizedAnswers.buildType as string) || ws.prelim.buildType,
+            audience: Array.isArray(normalizedAnswers.audience) ? normalizedAnswers.audience[0] : (normalizedAnswers.audience as string) || ws.prelim.audience,
+            country: (normalizedAnswers.region as string) || ws.user?.country,
           }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Generation timeout")), 12000)),
-        ]);
-
-        const result = await timedInvoke as any;
-        if (result?.error) throw new Error(result.error.message || "Brief generation failed");
-        if (result?.data?.error) throw new Error(result.data.error);
-        brief = result?.data as BriefData;
-      } catch {
-        // Generator unavailable — use local draft silently
-        brief = buildFallbackBrief(answerSet);
-      }
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Brief generation timeout after retries")), 35000)),
+      ]);
 
       if (!brief) throw new Error("Brief generation failed");
+      const fileNameList = uploadedFiles.map(f => `${f.name} (${f.sourceType})`).join(", ");
+      const existingSources = brief.informationFromSources || brief.inspiration || "";
       const normalizedBrief: BriefData = {
         ...brief,
+        keyMessages: Array.isArray(brief.contentSections) && brief.contentSections.length > 0
+          ? brief.contentSections
+          : (Array.isArray(brief.keyMessages) ? brief.keyMessages : []),
+        contentSections: Array.isArray(brief.contentSections) && brief.contentSections.length > 0
+          ? brief.contentSections
+          : (Array.isArray(brief.keyMessages) ? brief.keyMessages : []),
         toneAndStyle: brief.toneAndStyle || "Clear, concise, and compliant Company Name tone. Avoid promotional exaggeration; keep user-first language.",
-        informationFromSources: brief.informationFromSources || brief.inspiration || "No source summary was generated.",
+        informationFromSources: (/user-provided documents/i.test(existingSources))
+          ? existingSources
+          : fileNameList
+            ? `User-provided documents/links: ${fileNameList}${existingSources && !existingSources.match(/No supporting documents/i) ? `\n${existingSources}` : ""}`
+            : (existingSources || "No source summary was generated."),
       };
 
       ws.setCurrentBrief(normalizedBrief);
@@ -675,8 +836,8 @@ const BriefEditorPanel = () => {
         actor: ws.user?.email || "unknown-user",
         details: {
           projectTitle: normalizedBrief.projectTitle,
-          audience: (answerSet.audience as string) || ws.prelim.audience,
-          buildType: (answerSet.buildType as string) || ws.prelim.buildType,
+          audience: (normalizedAnswers.audience as string) || ws.prelim.audience,
+          buildType: (normalizedAnswers.buildType as string) || ws.prelim.buildType,
         },
       });
       ws.goToStep(2);
@@ -699,17 +860,17 @@ const BriefEditorPanel = () => {
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
       {/* Top bar */}
-      <div className="bg-card border-b border-border px-5 py-2 flex items-center gap-2.5 flex-shrink-0">
+      <div className="bg-card border-b border-border px-4 py-1.5 flex items-center gap-2.5 flex-shrink-0">
         <div className="text-[13px] font-semibold text-pf-dark flex-1">Share your ideas</div>
       </div>
 
       <div className="flex-1 overflow-y-auto bg-card">
         {/* ── Phase: Input ── */}
         {phase === "input" && (
-          <div className="py-8 px-6 max-w-2xl mx-auto">
+          <div className="py-8 px-6 max-w-6xl mx-auto">
             <h3 className="font-serif text-xl text-pf-dark mb-1">Describe your project</h3>
             <p className="text-[13px] text-muted-foreground mb-5">
-              Start with project context and add supporting content. Include clinical data, job descriptions, research reports, and existing webpage links.
+              Start with project context and add supporting content. Use this form to define the content intent, audience, evidence, and structure.
             </p>
 
             {/* Censor warning */}
@@ -724,21 +885,42 @@ const BriefEditorPanel = () => {
               </div>
             )}
 
-            {/* File upload */}
-            <div className="mb-4">
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary hover:bg-pf-mist/50 transition-all"
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.95fr)] gap-6 items-start">
+              <div>
+                {/* File upload */}
+                <div className="mb-5">
+              {/* Upload Terms */}
+                  <div className="mb-3 border border-border rounded-lg p-4 bg-secondary/40">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="upload-terms"
+                    checked={uploadTermsAccepted}
+                    onChange={e => setUploadTermsAccepted(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-primary flex-shrink-0 cursor-pointer"
+                  />
+                  <label htmlFor="upload-terms" className="text-[12px] text-muted-foreground leading-relaxed cursor-pointer">
+                    <span className="font-semibold text-foreground block mb-0.5">Material Upload Agreement</span>
+                    By uploading materials, I confirm that the content is approved for professional use, complies with applicable data privacy regulations (including GDPR), does not contain personally identifiable information without consent, and adheres to Company Name’s intellectual property and compliance guidelines. I take responsibility for ensuring all uploaded materials are accurate and fit for purpose.
+                  </label>
+                </div>
+                  </div>
+                  <div
+                onClick={() => uploadTermsAccepted ? fileInputRef.current?.click() : toast.warning("Please accept the Material Upload Agreement above before uploading.")}
+                className={cn(
+                  "border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary hover:bg-pf-mist/50 transition-all",
+                  !uploadTermsAccepted && "opacity-50"
+                )}
               >
                 <Upload className="w-5 h-5 mx-auto mb-1.5 text-muted-foreground" />
                 <div className="text-xs font-semibold text-muted-foreground">Upload supporting documents</div>
                 <div className="text-[11px] text-muted-foreground/70 mt-0.5">
                   Allowed formats: PPT/PPTX, PDF, CSV, DOC/DOCX, TXT. No images in Ideation. Text extraction supports TXT/CSV/PDF/DOCX; unsupported files fall back to metadata mode.
                 </div>
-              </div>
-              <input ref={fileInputRef} type="file" multiple accept=".ppt,.pptx,.pdf,.csv,.doc,.docx,.txt" onChange={handleFileUpload} className="hidden" />
+                  </div>
+                  <input ref={fileInputRef} type="file" multiple accept=".ppt,.pptx,.pdf,.csv,.doc,.docx,.txt" onChange={handleFileUpload} className="hidden" />
 
-              <div className="mt-3 border border-border rounded-lg p-3 bg-secondary/40">
+                  <div className="mt-3 border border-border rounded-lg p-3 bg-secondary/40">
                 <div className="text-[11px] font-semibold text-muted-foreground mb-2">Add existing webpage link</div>
                 <div className="grid grid-cols-1 gap-2">
                   <input
@@ -756,55 +938,226 @@ const BriefEditorPanel = () => {
                     />
                     <button
                       onClick={addWebpageLink}
-                      disabled={!webpageLink.trim() || !webpageLinkName.trim()}
+                      disabled={!webpageLink.trim() || !webpageLinkName.trim() || !uploadTermsAccepted}
                       className="bg-primary text-primary-foreground rounded-md px-3 py-2 text-[11px] font-semibold disabled:opacity-40"
                     >
                       <Link2 className="w-3 h-3 inline mr-1" /> Add Link
                     </button>
                   </div>
                 </div>
+                  </div>
+
+                  {uploadedFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {uploadedFiles.map((f, i) => (
+                        <div key={i} className="flex items-center gap-1.5 bg-pf-mist border border-pf-sky rounded-full px-3 py-1">
+                          {f.sourceType === "document" ? <FileText className="w-3 h-3 text-primary" /> : <Link2 className="w-3 h-3 text-primary" />}
+                          <span className="text-[11px] font-medium text-pf-dark">{f.name}</span>
+                          <button onClick={() => removeFile(i)} className="text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Prompt */}
+                <div className="bg-secondary border-[1.5px] border-border rounded-lg p-3 focus-within:border-primary focus-within:bg-card transition-all mb-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-2">Prompt bar</div>
+                  <textarea
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    placeholder={"Describe your project context\nList any known constraints\nInclude desired outcomes"}
+                    className="w-full bg-transparent border-none outline-none text-[13px] text-foreground resize-none min-h-[220px] max-h-[320px] leading-relaxed"
+                  />
+                  <span className="text-[11px] text-muted-foreground/50">
+                    {uploadedFiles.length > 0 ? `${uploadedFiles.length} source item(s) attached` : "Add documents, links, and questionnaire context for a more specific brief"}
+                  </span>
+                </div>
               </div>
 
-              {uploadedFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {uploadedFiles.map((f, i) => (
-                    <div key={i} className="flex items-center gap-1.5 bg-pf-mist border border-pf-sky rounded-full px-3 py-1">
-                      {f.sourceType === "document" ? <FileText className="w-3 h-3 text-primary" /> : <Link2 className="w-3 h-3 text-primary" />}
-                      <span className="text-[11px] font-medium text-pf-dark">{f.name}</span>
-                      <button onClick={() => removeFile(i)} className="text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
-                    </div>
-                  ))}
+              <div className="bg-card border border-border rounded-xl p-5 shadow-pf xl:sticky xl:top-6">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <div className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-muted-foreground">Ideation form</div>
+                    <h4 className="font-serif text-lg text-pf-dark">Questionnaire</h4>
+                  </div>
                 </div>
-              )}
+
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-[12px] font-semibold text-pf-dark mb-2">What are you building?</div>
+                    <div className="flex flex-wrap gap-2">
+                      {(QUESTIONS.find(q => q.key === "buildType")?.options || []).map((option) => {
+                        const selected = getAnswerString("buildType") === option;
+                        return (
+                          <button
+                            key={option}
+                            onClick={() => setAnswerValue("buildType", option)}
+                            className={cn(
+                              "px-3 py-2 rounded-lg border text-[12px] font-semibold transition-colors",
+                              selected ? "bg-primary border-primary text-primary-foreground" : "bg-secondary border-border text-foreground hover:border-primary"
+                            )}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[12px] font-semibold text-pf-dark mb-2">Who is the primary audience?</div>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {(QUESTIONS.find(q => q.key === "audience")?.options || []).map((option) => {
+                        const selected = option === "General or other"
+                          ? getAnswerString("audience") === option || Boolean(getAnswerString("audienceOther"))
+                          : getAnswerString("audience") === option;
+                        return (
+                          <button
+                            key={option}
+                            onClick={() => {
+                              setAnswerValue("audience", option);
+                              if (option !== "General or other") setAnswerValue("audienceOther", "");
+                            }}
+                            className={cn(
+                              "px-3 py-2 rounded-lg border text-[12px] font-semibold transition-colors",
+                              selected ? "bg-primary border-primary text-primary-foreground" : "bg-secondary border-border text-foreground hover:border-primary"
+                            )}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(getAnswerString("audience") === "General or other" || Boolean(getAnswerString("audienceOther"))) && (
+                      <input
+                        value={getAnswerString("audienceOther")}
+                        onChange={e => {
+                          setAnswerValue("audience", "General or other");
+                          setAnswerValue("audienceOther", e.target.value);
+                        }}
+                        placeholder="Type custom audience"
+                        className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-[12px] outline-none focus:border-primary"
+                      />
+                    )}
+                  </div>
+
+                  {getAnswerString("buildType") === "Website" && (
+                    <div>
+                      <div>
+                        <div className="text-[12px] font-semibold text-pf-dark mb-2">Website pages</div>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {(QUESTIONS.find(q => q.key === "websitePages")?.options || []).map((option) => {
+                            const selected = getAnswerArray("websitePages").includes(option);
+                            return (
+                              <button
+                                key={option}
+                                onClick={() => toggleMultiAnswer("websitePages", option)}
+                                className={cn(
+                                  "px-3 py-2 rounded-lg border text-[12px] font-semibold transition-colors",
+                                  selected ? "bg-primary border-primary text-primary-foreground" : "bg-secondary border-border text-foreground hover:border-primary"
+                                )}
+                              >
+                                {option}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <textarea
+                          value={getAnswerString("websitePagesOther")}
+                          onChange={e => setAnswerValue("websitePagesOther", e.target.value)}
+                          placeholder="Optional custom page names&#10;Home&#10;About&#10;Contact"
+                          className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-[12px] outline-none focus:border-primary min-h-[88px] resize-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="text-[12px] font-semibold text-pf-dark mb-2">Region</div>
+                    <select
+                      value={getAnswerString("region")}
+                      onChange={e => setAnswerValue("region", e.target.value)}
+                      className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-[12px] outline-none focus:border-primary"
+                    >
+                      <option value="">Select target region…</option>
+                      {(QUESTIONS.find(q => q.key === "region")?.options || []).map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className="text-[12px] font-semibold text-pf-dark mb-2">Themes/topics</div>
+                    <textarea
+                      value={getAnswerString("themesTopics")}
+                      onChange={e => setAnswerValue("themesTopics", e.target.value)}
+                      placeholder="Topic 1&#10;Topic 2&#10;Topic 3"
+                      className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-[12px] outline-none focus:border-primary min-h-[96px] resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-[12px] font-semibold text-pf-dark mb-2">Specific product, drug, or therapy?</div>
+                    <div className="flex gap-2">
+                      {["No", "Yes"].map((option) => {
+                        const selected = getAnswerString("specificProduct") === option;
+                        return (
+                          <button
+                            key={option}
+                            onClick={() => setAnswerValue("specificProduct", option)}
+                            className={cn(
+                              "px-3 py-2 rounded-lg border text-[12px] font-semibold transition-colors",
+                              selected ? "bg-primary border-primary text-primary-foreground" : "bg-secondary border-border text-foreground hover:border-primary"
+                            )}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {getAnswerString("specificProduct") === "Yes" && (
+                    <div>
+                      <div className="text-[12px] font-semibold text-pf-dark mb-2">Product / therapy name</div>
+                      <textarea
+                        value={getAnswerString("productName")}
+                        onChange={e => setAnswerValue("productName", e.target.value)}
+                        placeholder="e.g. New oncology drug XYZ-123"
+                        className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-[12px] outline-none focus:border-primary min-h-[72px] resize-none"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="text-[12px] font-semibold text-pf-dark mb-2">Clinical, research, regulatory data, disclaimers, or metrics</div>
+                    <textarea
+                      value={getAnswerString("evidenceAndDisclaimers")}
+                      onChange={e => setAnswerValue("evidenceAndDisclaimers", e.target.value)}
+                      placeholder="Describe all clinical/research/regulatory data, disclaimers, or metrics that will be used"
+                      className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-[12px] outline-none focus:border-primary min-h-[110px] resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Prompt */}
-            <div className="bg-secondary border-[1.5px] border-border rounded-lg p-3 focus-within:border-primary focus-within:bg-card transition-all mb-3">
-              <textarea
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                placeholder={"Describe your project context\nList any known constraints\nInclude desired outcomes"}
-                className="w-full bg-transparent border-none outline-none text-[13px] text-foreground resize-none min-h-[150px] max-h-[220px] leading-relaxed"
-              />
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] text-muted-foreground/50">
-                  {uploadedFiles.length > 0 && `${uploadedFiles.length} file(s) attached`}
-                </span>
-                <button
-                  onClick={handleStartQuestions}
-                  disabled={!prompt.trim() && uploadedFiles.length === 0}
-                  className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold hover:bg-pf-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-                >
-                  <Send className="w-3 h-3" /> Continue
-                </button>
-              </div>
+            <div className="mt-6 border-t border-border pt-4 flex items-center justify-end">
+              <button
+                onClick={handleStartQuestions}
+                disabled={!prompt.trim() && uploadedFiles.length === 0}
+                className="bg-primary text-primary-foreground rounded-md px-5 py-2 text-xs font-semibold hover:bg-pf-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                <Send className="w-3 h-3" /> Generate Brief
+              </button>
             </div>
           </div>
         )}
 
         {/* ── Phase: Lego Questions ── */}
         {phase === "questions" && currentQ && (
-          <div className="py-10 px-6 max-w-lg mx-auto animate-fade-up">
+          <div className="py-10 px-8 max-w-2xl mx-auto animate-fade-up">
             {/* Progress bar */}
             <div className="flex items-center gap-2 mb-8">
               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
@@ -814,20 +1167,20 @@ const BriefEditorPanel = () => {
             </div>
 
             {/* Question card */}
-            <div className="bg-card border border-border rounded-xl p-6 shadow-pf mb-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-extrabold flex items-center justify-center">
+            <div className="bg-card border border-border rounded-xl p-8 shadow-pf mb-6">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-9 h-9 rounded-full bg-primary text-primary-foreground text-sm font-extrabold flex items-center justify-center flex-shrink-0">
                   {qPos + 1}
                 </div>
                 <h3 className="font-serif text-lg text-pf-dark">{currentQ.question}</h3>
               </div>
               {currentQ.subtitle && (
-                <p className="text-[12px] text-muted-foreground ml-9 mb-4">{currentQ.subtitle}</p>
+                <p className="text-[12px] text-muted-foreground ml-12 mb-4">{currentQ.subtitle}</p>
               )}
 
               {/* Options (chips) */}
               {currentQ.dropdown && currentQ.options && (
-                <div className="ml-9 mb-4">
+                <div className="ml-12 mb-4">
                   <select
                     value={String(answers[currentQ.key] || "")}
                     onChange={e => setAnswers(prev => ({ ...prev, [currentQ.key]: e.target.value }))}
@@ -849,7 +1202,7 @@ const BriefEditorPanel = () => {
               )}
 
               {currentQ.options && !currentQ.dropdown && (
-                <div className="flex flex-wrap gap-2 mb-4 ml-9">
+                <div className="flex flex-wrap gap-3 mb-6 ml-12">
                   {currentQ.options.map(opt => {
                     const isSelected = currentQ.multiSelect
                       ? multiSelected.includes(opt)
@@ -859,7 +1212,7 @@ const BriefEditorPanel = () => {
                         key={opt}
                         onClick={() => answerOption(opt)}
                         className={cn(
-                          "px-4 py-2.5 rounded-lg border-[1.5px] text-sm font-medium transition-all",
+                          "px-5 py-3 rounded-lg border-[1.5px] text-sm font-medium transition-all",
                           isSelected
                             ? "bg-primary border-primary text-primary-foreground shadow-sm"
                             : "bg-card border-border text-foreground hover:border-primary hover:text-primary"
@@ -875,7 +1228,7 @@ const BriefEditorPanel = () => {
 
               {/* Multi-select confirm */}
               {currentQ.multiSelect && multiSelected.length > 0 && (
-                <div className="ml-9">
+                <div className="ml-12">
                   <button
                     onClick={confirmMultiSelect}
                     className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-xs font-semibold flex items-center gap-1.5"
@@ -887,12 +1240,12 @@ const BriefEditorPanel = () => {
 
               {/* Free text */}
               {currentQ.freeText && (
-                <div className="ml-9">
+                <div className="ml-12">
                   <textarea
                     value={freeAnswer}
                     onChange={e => setFreeAnswer(e.target.value)}
                     placeholder={currentQ.placeholder || "Type your answer…"}
-                    className="w-full bg-secondary border-[1.5px] border-border rounded-lg p-3 text-sm text-foreground resize-none min-h-[80px] outline-none focus:border-primary transition-colors"
+                    className="w-full bg-secondary border-[1.5px] border-border rounded-lg p-4 text-sm text-foreground resize-none min-h-[140px] outline-none focus:border-primary transition-colors"
                   />
                   <button
                     onClick={submitFreeText}

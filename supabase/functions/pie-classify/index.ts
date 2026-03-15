@@ -53,6 +53,42 @@ const AUDIENCE_TARGETS: Record<string, { target: number; max: number; label: str
 const BRAND_VOICE_POSITIVE = ["patient", "evidence", "clinical", "science", "safe", "clear", "accessible", "compliant", "approved", "trust"];
 const BRAND_VOICE_NEGATIVE = ["cheap", "affordable", "best", "only", "guaranteed", "cure", "miracle", "revolutionary"];
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function callGroqWithRetry(payload: Record<string, unknown>, apiKey: string, attempts = 3) {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) return response;
+      if (response.status === 402) return response;
+
+      if (response.status === 429 || response.status >= 500) {
+        if (attempt < attempts) {
+          await sleep(attempt * 700);
+          continue;
+        }
+      }
+
+      const text = await response.text();
+      throw new Error(`Groq request failed (${response.status}): ${text.slice(0, 300)}`);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Unknown Groq error");
+      if (attempt < attempts) {
+        await sleep(attempt * 700);
+      }
+    }
+  }
+
+  throw lastError ?? new Error("Groq request failed after retries");
+}
+
 function detectJurisdiction(brief: string, country: string) {
   const search = (brief + " " + country).toLowerCase().replace(/[^\w\s]/g, " ");
   let matched = null;
@@ -132,36 +168,52 @@ function predictReadability(brief: string, audience: string) {
 }
 
 function buildEnrichedPrompt(brief: string, audience: any, jurisdiction: any, risk: any, tone: any, readability: any, context: any, ragContext: string) {
-  const lines = ["You are a senior Company Name digital strategist.", ""];
-  lines.push("=== PROJECT CONTEXT ===");
-  if (context.buildType) lines.push(`Build type   : ${context.buildType}`);
-  if (context.country) lines.push(`Country      : ${context.country}`);
-  lines.push("");
-  lines.push("=== PROMPT INTELLIGENCE ENGINE OUTPUT ===");
-  lines.push(`Audience     : ${audience.audience} (confidence: ${audience.confidence})`);
-  if (audience.flag_for_review) lines.push(`  ⚠ LOW CONFIDENCE — confirm audience`);
-  lines.push(`Jurisdiction : ${jurisdiction.body}`);
-  lines.push(`Framework    : ${jurisdiction.framework}`);
-  if (jurisdiction.gdpr) lines.push(`  GDPR applies — cookie consent required`);
-  lines.push(`Risk Level   : ${risk.level} (score: ${risk.risk_score})`);
-  if (risk.triggers.length) lines.push(`  Risk terms: ${risk.triggers.join(", ")}`);
-  lines.push(`Brand Tone   : ${tone.label} (score: ${tone.tone_score})`);
-  lines.push(`Readability  : Grade ${readability.predicted_grade} → target ${readability.target_grade}`);
-  lines.push("");
-  lines.push("=== CONSTRAINTS ===");
-  risk.recommendations.forEach((r: string) => lines.push(`• ${r}`));
-  if (tone.inject_guidance) {
-    lines.push("• TONE: Write in Company Name voice — science-led, patient-centred, clear, and no hype.");
-  }
-  if (readability.inject_simplify) lines.push(`• READABILITY: ${readability.guidance}`);
-  lines.push("• Return ONLY valid JSON. No markdown.");
-  lines.push("");
-  lines.push("=== BRAND RAG CONTEXT (Company Name docs) ===");
-  lines.push(ragContext);
-  lines.push("");
-  lines.push("=== USER REQUEST ===");
-  lines.push(brief);
-  return lines.join("\n");
+  return JSON.stringify({
+    role: "Senior Pfizer digital strategist",
+    project_context: {
+      buildType: context.buildType || null,
+      country: context.country || null,
+    },
+    pie_output: {
+      audience: {
+        audience: audience.audience,
+        confidence: audience.confidence,
+        flag_for_review: audience.flag_for_review,
+        flag_reason: audience.flag_reason || null,
+      },
+      jurisdiction: {
+        body: jurisdiction.body,
+        framework: jurisdiction.framework,
+        gdpr: jurisdiction.gdpr,
+      },
+      risk: {
+        level: risk.level,
+        risk_score: risk.risk_score,
+        triggers: risk.triggers,
+        recommendations: risk.recommendations,
+      },
+      tone: {
+        label: tone.label,
+        tone_score: tone.tone_score,
+        inject_guidance: tone.inject_guidance,
+      },
+      readability: {
+        predicted_grade: readability.predicted_grade,
+        target_grade: readability.target_grade,
+        guidance: readability.guidance,
+        inject_simplify: readability.inject_simplify,
+      },
+    },
+    generation_rules: [
+      "Generate specific Pfizer-ready JSON grounded in the supplied user inputs.",
+      "Use Pfizer RAG context to sharpen terminology and compliance posture, not as a substitute for user evidence.",
+      "Tone, style, and colours are applied automatically from branding downstream.",
+      "Do not invent unsupported claims, metrics, or sections.",
+      "Return valid JSON only.",
+    ],
+    brand_rag_context: ragContext,
+    user_request: brief,
+  }, null, 2);
 }
 
 function calculateScore(audience: any, risk: any, tone: any, readability: any) {
@@ -190,10 +242,7 @@ serve(async (req) => {
     if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY not configured");
 
     // C1: Audience — use AI for zero-shot classification
-    const audResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const audResponse = await callGroqWithRetry({
         model: "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: "Classify the audience. Return JSON only." },
@@ -218,8 +267,7 @@ serve(async (req) => {
           },
         }],
         tool_choice: { type: "function", function: { name: "classify_audience" } },
-      }),
-    });
+      }, GROQ_API_KEY);
 
     if (!audResponse.ok) {
       const status = audResponse.status;
@@ -230,7 +278,10 @@ serve(async (req) => {
 
     const audData = await audResponse.json();
     const audTool = audData.choices?.[0]?.message?.tool_calls?.[0];
-    const audienceResult = audTool?.function?.arguments ? JSON.parse(audTool.function.arguments) : { audience: (audHint || "patients").toLowerCase(), confidence: 0.5, flag_for_review: true, flag_reason: "Fallback used" };
+    if (!audTool?.function?.arguments) {
+      throw new Error("Audience classification did not return a structured response");
+    }
+    const audienceResult = JSON.parse(audTool.function.arguments);
 
     // C2-C5: Rule-based classifiers
     const jurisdiction = detectJurisdiction(brief, country || "");
@@ -240,6 +291,9 @@ serve(async (req) => {
     const scoring = calculateScore(audienceResult, risk, tone, readability);
 
     const ragChunks = await retrievePfizerContext(`${brief}\n${buildType || ""}\n${country || ""}\n${audHint || ""}`);
+    if (!ragChunks || ragChunks.length === 0) {
+      throw new Error("Pfizer RAG retrieval failed during PIE classification");
+    }
     const ragContext = formatRagContext(ragChunks);
 
     const enriched_prompt = buildEnrichedPrompt(brief, audienceResult, jurisdiction, risk, tone, readability, { buildType, country }, ragContext);

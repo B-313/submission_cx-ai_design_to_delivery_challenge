@@ -9,10 +9,25 @@ const BriefDisplayPanel = () => {
   const ws = useWorkspace();
   const { currentBrief, goToStep, approvePie, setCurrentBrief, pieResult, materials } = ws;
 
+  const extractSourceCount = (text: string): number | null => {
+    if (!text) return null;
+    if (/no external documents or links supplied|no user-provided documents or links supplied|prompt and ideation inputs only/i.test(text)) {
+      return 0;
+    }
+    const listed = text.match(/User-provided documents\/links:\s*([^\n]+)/i);
+    if (!listed?.[1]) return null;
+    return listed[1]
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean).length;
+  };
+
   const materialCount = materials.length;
-  const sourceValue = materialCount > 0 ? `${materialCount} source${materialCount === 1 ? "" : "s"} absorbed` : "Prompt-led brief";
+  const derivedSourceCount = extractSourceCount(currentBrief.informationFromSources || "");
+  const sourceCount = derivedSourceCount === null ? materialCount : derivedSourceCount;
+  const sourceValue = sourceCount > 0 ? `${sourceCount} source${sourceCount === 1 ? "" : "s"} absorbed` : "Prompt-led brief";
   const sourceDetail = currentBrief.informationFromSources || "No source summary available.";
-  const enrichmentDetail = currentBrief.inspiration || "PIE applied audience, compliance, and structure refinement.";
+  const enrichmentDetail = currentBrief.inspiration || "Prompt intelligence applied audience, compliance, and structure refinement.";
   const audienceLabel = pieResult?.audience?.audience || ws.prelim.audience || "Not detected";
   const jurisdictionLabel = pieResult?.jurisdiction?.body || "Global default safeguards";
   const readabilityLabel = pieResult
@@ -70,13 +85,13 @@ const BriefDisplayPanel = () => {
       <div className="bg-pf-mist border-b border-pf-sky px-6 py-3">
         <div className="max-w-3xl mx-auto">
           <div className="text-[11px] font-extrabold uppercase tracking-wider text-pf-dark/70 mb-0.5">
-            PIE-Enriched Brief
+            Prompt Intelligence Generated Content from What You Provided
           </div>
           <p className="text-[13px] text-foreground leading-relaxed">
             <span className="font-semibold">{currentBrief.projectTitle}</span> — {currentBrief.goal}
           </p>
           <p className="text-[11px] text-muted-foreground mt-1">
-            PIE converted your raw ideas, links, and files into a brief shaped by audience, jurisdiction, readability, and risk guardrails.
+            Prompt intelligence converted your raw ideas, links, and files into a brief shaped by audience, jurisdiction, readability, and risk guardrails.
           </p>
         </div>
       </div>
@@ -92,10 +107,10 @@ const BriefDisplayPanel = () => {
             <EnrichmentCard
               title="Audience Framing"
               value={toTitleCase(audienceLabel)}
-              detail={pieResult?.audience?.flag_for_review ? "PIE flagged audience confidence for human review." : "Brief language and structure were tuned to the detected audience."}
+              detail={pieResult?.audience?.flag_for_review ? "Audience confidence was flagged for human review." : "Brief language and structure were tuned to the detected audience."}
             />
             <EnrichmentCard
-              title="PIE Added"
+              title="Intelligence Added"
               value="Enrichment layer applied"
               detail={enrichmentDetail}
             />

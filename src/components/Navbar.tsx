@@ -7,7 +7,7 @@ const Navbar = () => {
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <a href="/" className="flex items-center gap-2.5">
           <Terminal className="w-5 h-5 text-primary" />
-          <span className="font-bold text-foreground tracking-tight">PromptLab</span>
+          <span className="font-bold text-foreground tracking-tight">Accelerator</span>
         </a>
 
         <div className="hidden md:flex items-center gap-8">

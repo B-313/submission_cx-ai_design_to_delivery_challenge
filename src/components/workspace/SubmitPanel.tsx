@@ -30,12 +30,12 @@ const SubmitPanel = () => {
 
     const title = ws.currentBrief?.projectTitle || "Company Name Project";
     const goal = ws.currentBrief?.goal || "";
-    const sections = ws.currentBrief?.contentSections || [];
-    const keyMessages = ws.currentBrief?.keyMessages || [];
+    const sections = ws.currentBrief?.contentSections?.length
+      ? ws.currentBrief.contentSections
+      : (ws.currentBrief?.keyMessages || []);
     const bodyBlocks = [
       goal,
       ...sections,
-      ...keyMessages.map(msg => `• ${msg}`),
     ].filter(Boolean);
 
     const html = `<!DOCTYPE html>

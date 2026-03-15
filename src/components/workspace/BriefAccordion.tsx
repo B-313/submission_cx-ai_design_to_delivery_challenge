@@ -4,11 +4,10 @@ import { cn } from "@/lib/utils";
 
 const FIELDS: { key: keyof BriefData; label: string; maxLen: number; heading?: boolean; list?: boolean }[] = [
   { key: "projectTitle", label: "Project Name", maxLen: 80, heading: true },
-  { key: "goal", label: "Goal & Purpose Refined by PIE", maxLen: 400 },
-  { key: "audience", label: "Target Audience Framed by PIE", maxLen: 300 },
-  { key: "keyMessages", label: "Key Messages Prioritised by PIE", maxLen: 500, list: true },
-  { key: "contentSections", label: "Page Sections Structured for Website Generation", maxLen: 400, list: true },
-  { key: "informationFromSources", label: "PIE Source Synthesis from Documents and Links", maxLen: 700 },
+  { key: "goal", label: "Goal & Purpose", maxLen: 400 },
+  { key: "audience", label: "Target Audience", maxLen: 300 },
+  { key: "contentSections", label: "Page Sections Structured for Website Generation", maxLen: 500, list: true },
+  { key: "informationFromSources", label: "Source Synthesis from Documents and Links", maxLen: 700 },
 ];
 
 interface BriefAccordionProps {
@@ -24,9 +23,30 @@ const BriefAccordion = ({ brief, onUpdate }: BriefAccordionProps) => {
     return Array.isArray(val) ? val.join("\n") : (val || "");
   };
 
+  const getListValue = (key: keyof BriefData) => {
+    const val = brief[key];
+    return Array.isArray(val) ? val : [];
+  };
+
   const handleChange = (key: keyof BriefData, value: string, list?: boolean) => {
     const updated = { ...brief, [key]: list ? value.split("\n").map(l => l.trim()).filter(Boolean) : value };
     onUpdate(updated);
+  };
+
+  const handleListItemChange = (key: keyof BriefData, index: number, value: string) => {
+    const items = [...getListValue(key)];
+    items[index] = value;
+    onUpdate({ ...brief, [key]: items });
+  };
+
+  const addListItem = (key: keyof BriefData) => {
+    const items = [...getListValue(key), ""];
+    onUpdate({ ...brief, [key]: items });
+  };
+
+  const removeListItem = (key: keyof BriefData, index: number) => {
+    const items = getListValue(key).filter((_, i) => i !== index);
+    onUpdate({ ...brief, [key]: items });
   };
 
   return (
@@ -61,16 +81,49 @@ const BriefAccordion = ({ brief, onUpdate }: BriefAccordionProps) => {
 
             {isOpen && (
               <div className="px-7 pb-5 pl-16 animate-fade-up">
-                <textarea
-                  value={raw}
-                  onChange={e => handleChange(f.key, e.target.value, f.list)}
-                  className={cn(
-                    "w-full border-[1.5px] border-border rounded-md p-3.5 text-[15px] leading-[1.75] text-foreground resize-none outline-none bg-card hover:border-muted-foreground/30 focus:border-primary focus:shadow-[0_0_0_3px_hsla(200,100%,41%,0.1)] transition-all",
-                    f.heading && "font-serif text-[22px] text-pf-dark min-h-[52px]"
-                  )}
-                  rows={f.heading ? 2 : f.list ? 5 : 3}
-                  style={{ minHeight: f.heading ? 52 : 90 }}
-                />
+                {f.list ? (
+                  <div className="space-y-2.5">
+                    {getListValue(f.key).map((item, itemIndex) => (
+                      <div key={`${f.key}-${itemIndex}`} className="flex items-start gap-2">
+                        <div className="mt-2 text-[11px] text-muted-foreground w-5 text-center">
+                          {itemIndex + 1}
+                        </div>
+                        <input
+                          value={item}
+                          onChange={(e) => handleListItemChange(f.key, itemIndex, e.target.value)}
+                          className="flex-1 border-[1.5px] border-border rounded-md px-3 py-2.5 text-[14px] text-foreground outline-none bg-card hover:border-muted-foreground/30 focus:border-primary focus:shadow-[0_0_0_3px_hsla(200,100%,41%,0.1)] transition-all"
+                          placeholder={f.key === "contentSections" ? "Add a section heading" : "Add a key message"}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeListItem(f.key, itemIndex)}
+                          className="text-xs text-muted-foreground hover:text-destructive px-2 py-2"
+                          aria-label={`Remove ${f.label} item ${itemIndex + 1}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addListItem(f.key)}
+                      className="text-xs font-semibold text-primary hover:text-primary/80 px-1 py-1"
+                    >
+                      + Add {f.key === "contentSections" ? "Section" : "Message"}
+                    </button>
+                  </div>
+                ) : (
+                  <textarea
+                    value={raw}
+                    onChange={e => handleChange(f.key, e.target.value, f.list)}
+                    className={cn(
+                      "w-full border-[1.5px] border-border rounded-md p-3.5 text-[15px] leading-[1.75] text-foreground resize-none outline-none bg-card hover:border-muted-foreground/30 focus:border-primary focus:shadow-[0_0_0_3px_hsla(200,100%,41%,0.1)] transition-all",
+                      f.heading && "font-serif text-[22px] text-pf-dark min-h-[52px]"
+                    )}
+                    rows={f.heading ? 2 : 3}
+                    style={{ minHeight: f.heading ? 52 : 90 }}
+                  />
+                )}
                 <div className={cn("text-right text-[11px] font-mono mt-1", countClass)}>
                   {len}/{f.maxLen} characters
                 </div>

@@ -103,25 +103,58 @@ interface WorkspaceContextValue extends WorkspaceState {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
+const WORKSPACE_BOOTSTRAP_KEY = "workspace_bootstrap_state_v1";
+
+const createDefaultState = (): WorkspaceState => ({
+  step: 0,
+  maxStep: 0,
+  user: null,
+  prelim: { buildType: null, audience: null },
+  pieResult: null,
+  pieApproved: false,
+  briefs: [],
+  currentBrief: null,
+  layout: null,
+  reviewData: null,
+  reviewDecisions: {},
+  submitted: false,
+  loading: false,
+  activeAgent: null,
+  notes: "",
+  materials: [],
+});
+
+const createInitialState = (): WorkspaceState => {
+  const defaults = createDefaultState();
+
+  if (typeof window === "undefined") {
+    return defaults;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(WORKSPACE_BOOTSTRAP_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as Partial<WorkspaceState>;
+    if (!parsed || typeof parsed !== "object") return defaults;
+
+    return {
+      ...defaults,
+      ...parsed,
+      prelim: {
+        ...defaults.prelim,
+        ...(parsed.prelim || {}),
+      },
+      reviewDecisions: parsed.reviewDecisions || {},
+      materials: Array.isArray(parsed.materials) ? parsed.materials : [],
+      briefs: Array.isArray(parsed.briefs) ? parsed.briefs : [],
+    };
+  } catch {
+    return defaults;
+  }
+};
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<WorkspaceState>({
-    step: 0,
-    maxStep: 0,
-    user: null,
-    prelim: { buildType: null, audience: null },
-    pieResult: null,
-    pieApproved: false,
-    briefs: [],
-    currentBrief: null,
-    layout: null,
-    reviewData: null,
-    reviewDecisions: {},
-    submitted: false,
-    loading: false,
-    activeAgent: null,
-    notes: "",
-    materials: [],
-  });
+  const [state, setState] = useState<WorkspaceState>(createInitialState);
 
   const goToStep = useCallback((step: number) => {
     setState(s => ({

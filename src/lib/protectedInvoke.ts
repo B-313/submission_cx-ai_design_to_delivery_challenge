@@ -3,9 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 function getJudgeAccessKey() {
   const sessionKey = sessionStorage.getItem("judge_access_key");
   if (sessionKey) return sessionKey;
-  const localKey = localStorage.getItem("judge_access_key");
-  if (localKey) return localKey;
-  return "judge-demo-local";
+  return localStorage.getItem("judge_access_key");
 }
 
 export function saveJudgeAccessKey(key: string, persist = false) {
@@ -24,6 +22,12 @@ export async function invokeProtectedFunction<TBody extends Record<string, unkno
   body: TBody,
 ): Promise<{ data: TResponse | null; error: Error | null }> {
   const judgeAccessKey = getJudgeAccessKey();
+  if (!judgeAccessKey) {
+    return {
+      data: null,
+      error: new Error("Judge access key missing. Register once with a valid key to enable protected AI endpoints."),
+    };
+  }
 
   const { data, error } = await supabase.functions.invoke(functionName, {
     body,

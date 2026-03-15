@@ -12,65 +12,6 @@ const isJudgeAuthError = (message: string) => {
   return m.includes("401") || m.includes("unauthorized") || m.includes("non-2xx");
 };
 
-const buildFallbackReview = (brief: any) => {
-  const sections = Array.isArray(brief?.contentSections) ? brief.contentSections : [];
-  const text = [brief?.goal || "", brief?.audience || "", ...sections].join(" ").toLowerCase();
-
-  const complianceIssues: any[] = [];
-  const grammarIssues: any[] = [];
-
-  if (!/disclaimer|safety|important safety|regulatory|mhra|fda|gdpr/.test(text)) {
-    complianceIssues.push({
-      id: "fallback-c-1",
-      severity: "medium",
-      field: "Compliance",
-      contentSnippet: "No explicit safety or regulatory wording detected.",
-      issue: "Regulatory framing appears weak.",
-      recommendation: "Add approved safety and regulatory language relevant to the target market.",
-    });
-  }
-
-  if (/best|guaranteed|always|cure|risk-free/.test(text)) {
-    complianceIssues.push({
-      id: "fallback-c-2",
-      severity: "high",
-      field: "Claims",
-      contentSnippet: "Potential promotional or absolute claim language detected.",
-      issue: "Claims may violate regulated content rules.",
-      recommendation: "Replace absolute/promotional claims with evidence-based and approved wording.",
-    });
-  }
-
-  if ((brief?.goal || "").length > 220) {
-    grammarIssues.push({
-      id: "fallback-g-1",
-      severity: "low",
-      field: "Readability",
-      contentSnippet: brief.goal,
-      issue: "Goal statement is long and may reduce scannability.",
-      recommendation: "Split into shorter sentences and keep one primary objective per line.",
-    });
-  }
-
-  const complianceScore = Math.max(45, 88 - complianceIssues.length * 18);
-  const grammarScore = Math.max(55, 90 - grammarIssues.length * 14);
-  const brandVoice = 76;
-  const accessibility = 78;
-  const overallScore = Math.round((complianceScore + grammarScore + brandVoice + accessibility) / 4);
-
-  return {
-    overallScore,
-    complianceIssues,
-    grammarIssues,
-    scores: {
-      compliance: complianceScore,
-      grammar: grammarScore,
-      brandVoice,
-      accessibility,
-    },
-  };
-};
-
 const ReviewPanel = () => {
   const ws = useWorkspace();
 
@@ -105,14 +46,10 @@ const ReviewPanel = () => {
       toast.success("Review complete — approve or decline each finding");
     } catch (err: any) {
       const msg = err?.message || "Review failed";
-      if (ws.currentBrief) {
-        const fallback = buildFallbackReview(ws.currentBrief);
-        ws.setReviewData(fallback as any);
-      }
       toast.error(
         isJudgeAuthError(msg)
-          ? "AI review service is unavailable — using local fallback review so you can continue judging all sections."
-          : `${msg}. Using local fallback review so workflow remains available.`
+          ? "AI review requires a valid judge access key and live cloud services."
+          : msg
       );
     } finally {
       ws.setLoading(false);

@@ -11,14 +11,12 @@ const RegistrationPanel = () => {
 
   const update = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
-  const canSubmit = form.firstName && form.lastName && form.email && form.empNumber && form.department && form.country;
+  const canSubmit = form.firstName && form.lastName && form.email && form.empNumber && form.department && form.country && judgeAccessKey.trim().length > 0;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    // If provided, persist key so protected endpoints can use it.
-    if (judgeAccessKey.trim()) {
-      saveJudgeAccessKey(judgeAccessKey, true);
-    }
+    // Persist key so protected endpoints can use it across the full workflow.
+    saveJudgeAccessKey(judgeAccessKey, true);
     setUser(form as any);
     goToStep(1);
   };
@@ -61,15 +59,15 @@ const RegistrationPanel = () => {
         </div>
 
         <div className="mb-2">
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Judge Access Key (Optional)</label>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Judge Access Key</label>
           <input
             type="password"
             value={judgeAccessKey}
             onChange={e => setJudgeAccessKey(e.target.value)}
-            placeholder="Enter only if provided by event host"
+            placeholder="Provided by event host"
             className="w-full bg-secondary border-[1.5px] border-border rounded-md px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-primary focus:bg-card transition-colors"
           />
-          <p className="text-[11px] text-muted-foreground mt-1">If empty, the app runs in local fallback mode for protected endpoints.</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Required once at registration and then applied across the full workflow.</p>
         </div>
 
         <button

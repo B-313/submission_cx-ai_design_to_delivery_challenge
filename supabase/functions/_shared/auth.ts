@@ -5,9 +5,9 @@ declare const Deno: {
 };
 
 export function requireJudgeAccess(req: Request, corsHeaders: Record<string, string>) {
-  const expected = Deno.env.get("JUDGE_ACCESS_KEY");
+  const expected = Deno.env.get("judge_access");
   if (!expected) {
-    return new Response(JSON.stringify({ error: "Server misconfiguration: JUDGE_ACCESS_KEY is not set" }), {
+    return new Response(JSON.stringify({ error: "Server misconfiguration: judge_access is not set" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
