@@ -11,6 +11,7 @@ const corsHeaders = {
 const JURISDICTION_MAP: Record<string, { body: string; framework: string; notes: string; gdpr: boolean }> = {
   "united kingdom": { body: "MHRA", framework: "Human Medicines Regulations 2012 + ABPI Code", notes: "Post-Brexit UK rules. ABPI code governs pharma promotion.", gdpr: true },
   "uk": { body: "MHRA", framework: "Human Medicines Regulations 2012 + ABPI Code", notes: "Post-Brexit UK rules.", gdpr: true },
+  "eu": { body: "EMA", framework: "Directive 2001/83/EC", notes: "EU-wide medicinal promotion requirements with national regulator enforcement.", gdpr: true },
   "germany": { body: "EMA + BfArM", framework: "Directive 2001/83/EC + AMG", notes: "HWG for pharma advertising.", gdpr: true },
   "france": { body: "EMA + ANSM", framework: "Directive 2001/83/EC + CSP", notes: "ANSM oversees French pharma.", gdpr: true },
   "spain": { body: "EMA + AEMPS", framework: "Directive 2001/83/EC + RD 1345/2007", notes: "AEMPS is Spanish regulator.", gdpr: true },
@@ -33,6 +34,7 @@ const HIGH_RISK = [
   "drug", "medicine", "medication", "pharmaceutical", "prescription", "clinical trial", "efficacy",
   "oncology", "cancer", "tumour", "tumor", "chemotherapy", "immunotherapy", "vaccine",
   "adverse event", "side effect", "contraindication", "dosage", "dose",
+  "cure", "success", "guaranteed",
 ];
 const MEDIUM_RISK = [
   "patient", "disease", "condition", "symptom", "treatment", "therapy", "healthcare",
@@ -77,6 +79,7 @@ function scoreRisk(brief: string, jurisdiction: any) {
   const recs: string[] = [];
   if (level === "HIGH") {
     recs.push("Do NOT make unsubstantiated efficacy or safety claims");
+    recs.push("Do NOT use efficacy percentages unless explicitly approved and source-supported");
     recs.push("Include a regulatory disclaimer");
     recs.push("Flag for Medical Affairs review before generation");
   } else if (level === "MEDIUM") {
@@ -86,6 +89,10 @@ function scoreRisk(brief: string, jurisdiction: any) {
     recs.push("Standard brand compliance check applies");
   }
   if (jurisdiction?.gdpr) recs.push("GDPR: Cookie consent banner required");
+  if (jurisdiction?.body?.includes("FDA")) {
+    recs.push("FDA fair balance: present side effects and risks with equal prominence to benefits");
+  }
+  recs.push("Include patient safety language such as 'Talk to your doctor'");
   return { risk_score: score, level, triggers: highHits, medium_triggers: medHits, recommendations: recs };
 }
 
@@ -143,7 +150,7 @@ function buildEnrichedPrompt(brief: string, audience: any, jurisdiction: any, ri
   lines.push("=== CONSTRAINTS ===");
   risk.recommendations.forEach((r: string) => lines.push(`• ${r}`));
   if (tone.inject_guidance) {
-    lines.push("• TONE: Write in Company Name voice — human, optimistic, scientifically credible, no hype.");
+    lines.push("• TONE: Write in Company Name voice — science-led, patient-centred, clear, and no hype.");
   }
   if (readability.inject_simplify) lines.push(`• READABILITY: ${readability.guidance}`);
   lines.push("• Return ONLY valid JSON. No markdown.");
