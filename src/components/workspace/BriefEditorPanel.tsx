@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { evaluateMaterialSafety } from "@/lib/materialSafety";
@@ -10,6 +9,7 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { BriefData, PIEResult } from "@/contexts/WorkspaceContext";
 import { Upload, FileText, Link2, X, Send, Check, ChevronRight, AlertTriangle } from "lucide-react";
 import { appendAuditEvent } from "@/lib/audit";
+import { invokeProtectedFunction } from "@/lib/protectedInvoke";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -562,13 +562,11 @@ const BriefEditorPanel = () => {
 
       try {
         const timedPieInvoke = Promise.race([
-          supabase.functions.invoke("pie-classify", {
-            body: {
-              brief: fullPrompt,
-              country: (answerSet.region as string) || ws.user?.country || "",
-              audience,
-              buildType: (answerSet.buildType as string) || "",
-            },
+          invokeProtectedFunction("pie-classify", {
+            brief: fullPrompt,
+            country: (answerSet.region as string) || ws.user?.country || "",
+            audience,
+            buildType: (answerSet.buildType as string) || "",
           }),
           new Promise((_, reject) => setTimeout(() => reject(new Error("PIE classification timeout")), 8000)),
         ]);
@@ -622,22 +620,20 @@ const BriefEditorPanel = () => {
 
       try {
         const timedInvoke = Promise.race([
-          supabase.functions.invoke("generate-brief", {
-            body: {
-              enrichedPrompt: pieResult.enriched_prompt,
-              rawPrompt: prompt,
-              fullPrompt: buildFullPrompt(answerSet),
-              ideationAnswers: answerSet,
-              sourceContext: uploadedFiles.map(f => ({
-                name: f.name,
-                sourceType: f.sourceType,
-                source: f.source,
-                excerpt: f.content.slice(0, 1200),
-              })),
-              buildType: (answerSet.buildType as string) || ws.prelim.buildType,
-              audience: Array.isArray(answerSet.audience) ? answerSet.audience[0] : (answerSet.audience as string) || ws.prelim.audience,
-              country: (answerSet.region as string) || ws.user?.country,
-            },
+          invokeProtectedFunction("generate-brief", {
+            enrichedPrompt: pieResult.enriched_prompt,
+            rawPrompt: prompt,
+            fullPrompt: buildFullPrompt(answerSet),
+            ideationAnswers: answerSet,
+            sourceContext: uploadedFiles.map(f => ({
+              name: f.name,
+              sourceType: f.sourceType,
+              source: f.source,
+              excerpt: f.content.slice(0, 1200),
+            })),
+            buildType: (answerSet.buildType as string) || ws.prelim.buildType,
+            audience: Array.isArray(answerSet.audience) ? answerSet.audience[0] : (answerSet.audience as string) || ws.prelim.audience,
+            country: (answerSet.region as string) || ws.user?.country,
           }),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Generation timeout")), 12000)),
         ]);

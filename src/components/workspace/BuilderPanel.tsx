@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { evaluateMaterialSafety } from "@/lib/materialSafety";
 import { toast } from "sonner";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { CheckCircle, AlertTriangle, ArrowLeft, Plus, Trash2, GripVertical, Download, X } from "lucide-react";
+import { invokeProtectedFunction } from "@/lib/protectedInvoke";
 
 interface CanvasBlock {
   id: string;
@@ -279,13 +279,11 @@ const BuilderPanel = () => {
     setFinalChecking(true);
     try {
       const contentText = currentBlocks.map(b => b.fields.map(f => f.value).join("\n")).join("\n\n");
-      const { data, error } = await supabase.functions.invoke("review-content", {
-        body: {
-          brief: contentText,
-          buildType: ws.prelim.buildType,
-          audience: ws.prelim.audience,
-          country: ws.user?.country,
-        },
+      const { data, error } = await invokeProtectedFunction("review-content", {
+        brief: contentText,
+        buildType: ws.prelim.buildType,
+        audience: ws.prelim.audience,
+        country: ws.user?.country,
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);

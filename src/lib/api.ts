@@ -1,9 +1,9 @@
-import { supabase } from "@/integrations/supabase/client";
 import type { BriefAnalysis } from "@/types/analysis";
+import { invokeProtectedFunction } from "@/lib/protectedInvoke";
 
 export async function analyzeBrief(brief: string): Promise<BriefAnalysis> {
-  const { data, error } = await supabase.functions.invoke("analyze-brief", {
-    body: { brief },
+  const { data, error } = await invokeProtectedFunction<{ brief: string }, BriefAnalysis | { error: string }>("analyze-brief", {
+    brief,
   });
 
   if (error) {

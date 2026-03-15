@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 import { appendAuditEvent } from "@/lib/audit";
+import { invokeProtectedFunction } from "@/lib/protectedInvoke";
 
 const ReviewPanel = () => {
   const ws = useWorkspace();
@@ -20,13 +20,11 @@ const ReviewPanel = () => {
     ws.setLoading(true);
     ws.setActiveAgent(4);
     try {
-      const { data, error } = await supabase.functions.invoke("review-content", {
-        body: {
-          brief: ws.currentBrief,
-          buildType: ws.prelim.buildType,
-          audience: ws.prelim.audience,
-          country: ws.user?.country,
-        },
+      const { data, error } = await invokeProtectedFunction("review-content", {
+        brief: ws.currentBrief,
+        buildType: ws.prelim.buildType,
+        audience: ws.prelim.audience,
+        country: ws.user?.country,
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);

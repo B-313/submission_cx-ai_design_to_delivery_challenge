@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { supabase } from "@/integrations/supabase/client";
 import { appendAuditEvent } from "@/lib/audit";
+import { invokeProtectedFunction } from "@/lib/protectedInvoke";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 
@@ -212,7 +212,7 @@ const SubmitPanel = () => {
     };
 
     try {
-      const { data, error } = await supabase.functions.invoke("notify-reviewer", { body: payload });
+        const { data, error } = await invokeProtectedFunction("notify-reviewer", payload);
       if (error) throw new Error(error.message);
       appendAuditEvent({
         eventType: "notification",

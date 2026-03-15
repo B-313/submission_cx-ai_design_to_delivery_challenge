@@ -1,18 +1,22 @@
 import { useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { saveJudgeAccessKey } from "@/lib/protectedInvoke";
 
 const RegistrationPanel = () => {
   const { goToStep, setUser } = useWorkspace();
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "", empNumber: "", department: "", country: "",
   });
+  const [judgeAccessKey, setJudgeAccessKey] = useState("");
+  const [rememberKey, setRememberKey] = useState(false);
 
   const update = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
-  const canSubmit = form.firstName && form.lastName && form.email && form.empNumber && form.department && form.country;
+  const canSubmit = form.firstName && form.lastName && form.email && form.empNumber && form.department && form.country && judgeAccessKey.trim().length > 0;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
+    saveJudgeAccessKey(judgeAccessKey, rememberKey);
     setUser(form as any);
     goToStep(1);
   };
@@ -53,6 +57,28 @@ const RegistrationPanel = () => {
             {countries.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
+
+        <div className="mb-2">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Judge Access Key</label>
+          <input
+            type="password"
+            value={judgeAccessKey}
+            onChange={e => setJudgeAccessKey(e.target.value)}
+            placeholder="Provided by event host"
+            className="w-full bg-secondary border-[1.5px] border-border rounded-md px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-primary focus:bg-card transition-colors"
+          />
+          <p className="text-[11px] text-muted-foreground mt-1">Required to run protected AI generation endpoints.</p>
+        </div>
+
+        <label className="flex items-center gap-2 mb-4 text-[12px] text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={rememberKey}
+            onChange={e => setRememberKey(e.target.checked)}
+            className="rounded border-border"
+          />
+          Remember access key on this device
+        </label>
 
         <button
           onClick={handleSubmit}
