@@ -340,7 +340,7 @@ const BriefEditorPanel = () => {
     });
   };
 
-  const addWebpageLink = () => {
+  const addWebpageLink = async () => {
     const url = webpageLink.trim();
     const name = webpageLinkName.trim();
     if (!url || !name) return;
@@ -361,10 +361,24 @@ const BriefEditorPanel = () => {
       source: url,
       stage: "ideation",
     });
-    setUploadedFiles(prev => [...prev, { id: String(Date.now()) + Math.random().toString(36).slice(2, 5), name, content: `Webpage link: ${url}`.slice(0, 8000), materialId, source: url, sourceType: "link" }]);
+    // Fetch real page content via Jina Reader (free, no API key required)
+    let content = `Webpage link: ${url}`;
+    const tid = toast.loading(`Reading ${name}…`);
+    try {
+      const res = await fetch(`https://r.jina.ai/${url}`, {
+        headers: { Accept: "text/plain", "X-Return-Format": "text" },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (res.ok) {
+        const text = await res.text();
+        if (text.length > 100) content = text.slice(0, 8000);
+      }
+    } catch { /* fallback to URL string */ }
+    toast.dismiss(tid);
+    setUploadedFiles(prev => [...prev, { id: String(Date.now()) + Math.random().toString(36).slice(2, 5), name, content, materialId, source: url, sourceType: "link" }]);
     setWebpageLink("");
     setWebpageLinkName("");
-    toast.success("Webpage link added");
+    toast.success(content.startsWith("Webpage link:") ? "Link added (content unavailable)" : `${name}: ${Math.ceil(content.length / 100) / 10}K chars extracted`);
   };
 
   const getSeedAnswers = (): QAnswers => ({});
@@ -629,7 +643,7 @@ const BriefEditorPanel = () => {
               name: f.name,
               sourceType: f.sourceType,
               source: f.source,
-              excerpt: f.content.slice(0, 1200),
+              excerpt: f.content.slice(0, 3000),
             })),
             buildType: (answerSet.buildType as string) || ws.prelim.buildType,
             audience: Array.isArray(answerSet.audience) ? answerSet.audience[0] : (answerSet.audience as string) || ws.prelim.audience,
