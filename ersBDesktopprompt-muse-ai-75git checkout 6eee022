@@ -1,0 +1,31 @@
+[33m2ae2f9c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Fix critical bugs and complete UX polish
+[33m6eee022[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Design picker panel added
+[33m25faadf[m Refactored lego brief builder
+[33mde2a563[m Implement 5-step agentic flow
+[33m67257ba[m Design-to-Delivery tweaks
+[33m1416081[m Merge to Brief Editor and Builder
+[33m1e015c8[m Agentic UI consolidation
+[33md34535f[m Implement BriefAccordion component
+[33m7e9f0b3[m Integrate BriefAccordion
+[33m9620fee[m Integrate agentic BriefEditor
+[33m80a1934[m Add BriefAccordion component
+[33m40005b6[m Design workspace context
+[33m391d0d1[m Add workspace context
+[33m5dcece7[m Launch full PIE engine UI
+[33m45a8919[m Connected to Lovable Cloud
+[33m85d9fd0[m Connected to Lovable Cloud
+[33m1ae6599[m Preceding changes
+[33mdcc8d5d[m Preceding changes
+[33me7e3ccf[m Connected Lovable Cloud
+[33m293f5e2[m Connected to Lovable Cloud
+[33me022d19[m Connected to Lovable Cloud
+[33mc532f13[m Connected to Lovable Cloud
+[33m84875b4[m Changes
+[33mc406f0e[m Work in progress
+[33m89d37f5[m Add PromptLab UI foundation
+[33mfabbe72[m Buildprompt landing UI
+[33m12f73b8[m Update lockfile
+[33mc824880[m Update lockfile and deps
+[33m6cbe38b[m Update lockfile dependencies
+[33m9fa6fa4[m Changes
+[33m732c726[m template: vite_react_shadcn_ts_2026-01-16
