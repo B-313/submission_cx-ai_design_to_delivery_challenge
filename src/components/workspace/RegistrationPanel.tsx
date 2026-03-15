@@ -8,15 +8,17 @@ const RegistrationPanel = () => {
     firstName: "", lastName: "", email: "", phone: "", empNumber: "", department: "", country: "",
   });
   const [judgeAccessKey, setJudgeAccessKey] = useState("");
-  const [rememberKey, setRememberKey] = useState(false);
 
   const update = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
-  const canSubmit = form.firstName && form.lastName && form.email && form.empNumber && form.department && form.country && judgeAccessKey.trim().length > 0;
+  const canSubmit = form.firstName && form.lastName && form.email && form.empNumber && form.department && form.country;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    saveJudgeAccessKey(judgeAccessKey, rememberKey);
+    // If provided, persist key so protected endpoints can use it.
+    if (judgeAccessKey.trim()) {
+      saveJudgeAccessKey(judgeAccessKey, true);
+    }
     setUser(form as any);
     goToStep(1);
   };
@@ -32,8 +34,8 @@ const RegistrationPanel = () => {
       <div className="bg-card border border-border rounded-[20px] shadow-pf-lg p-10 w-[620px] max-w-[95vw] animate-fade-up">
         <h2 className="font-serif text-2xl text-pf-dark mb-1">Welcome to the Accelerator</h2>
         <p className="text-[13px] text-muted-foreground mb-5">Enter your details to personalise your workspace.</p>
-        <div className="bg-warning-light border border-warning/25 rounded-md px-3 py-2 text-[12px] text-warning font-semibold mb-6">
-          Mandatory details are required to access the portal: First Name, Last Name, Company Email, Employee Number, Department, and Country/Region.
+        <div className="bg-primary/10 border border-primary/25 rounded-md px-3 py-2 text-[12px] text-primary font-semibold mb-6">
+          All fields are mandatory.
         </div>
 
         <div className="grid grid-cols-2 gap-4 mb-3">
@@ -59,26 +61,16 @@ const RegistrationPanel = () => {
         </div>
 
         <div className="mb-2">
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Judge Access Key</label>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Judge Access Key (Optional)</label>
           <input
             type="password"
             value={judgeAccessKey}
             onChange={e => setJudgeAccessKey(e.target.value)}
-            placeholder="Provided by event host"
+            placeholder="Enter only if provided by event host"
             className="w-full bg-secondary border-[1.5px] border-border rounded-md px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-primary focus:bg-card transition-colors"
           />
-          <p className="text-[11px] text-muted-foreground mt-1">Required to run protected AI generation endpoints.</p>
+          <p className="text-[11px] text-muted-foreground mt-1">If empty, the app runs in local fallback mode for protected endpoints.</p>
         </div>
-
-        <label className="flex items-center gap-2 mb-4 text-[12px] text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={rememberKey}
-            onChange={e => setRememberKey(e.target.checked)}
-            className="rounded border-border"
-          />
-          Remember access key on this device
-        </label>
 
         <button
           onClick={handleSubmit}

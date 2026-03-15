@@ -45,6 +45,9 @@ const BuilderPanel = () => {
   const materialFileInputRef = useRef<HTMLInputElement>(null);
 
   const currentBlocks = pages[activePage]?.blocks ?? [];
+  const acceptedReviewRecommendations = ws.reviewData
+    ? [...ws.reviewData.complianceIssues, ...ws.reviewData.grammarIssues].filter((issue) => ws.reviewDecisions[issue.id] === "approved")
+    : [];
 
   const layoutOptions = [
     { id: "hero", name: "Hero + Cards" },
@@ -168,7 +171,7 @@ const BuilderPanel = () => {
     toast.success("HTML downloaded");
   };
 
-  const confirmMaterialGuideline = () => window.confirm("Confirm this material is safe-for-work and complies with upload guidelines.");
+  const confirmMaterialGuideline = () => true; // T&C covered by Material Upload Agreement in Ideation; safety check via Safety Agent below
 
   const runSafetyAgentCheck = (textToScan: string) => {
     const scan = evaluateMaterialSafety(textToScan);
@@ -222,12 +225,7 @@ const BuilderPanel = () => {
         toast.warning(`Skipped ${file.name} (guideline confirmation not provided)`);
         continue;
       }
-      const customName = window.prompt("Enter a name for this material", file.name)?.trim();
-      if (!customName) {
-        toast.warning(`Skipped ${file.name} (name required)`);
-        continue;
-      }
-
+      const customName = file.name.replace(/\.[^/.]+$/, "") || file.name;
       const detectedType: "document" | "image" = file.type.startsWith("image/") ? "image" : "document";
       const textForScan = detectedType === "document" ? await file.text().catch(() => "") : "";
       if (!runSafetyAgentCheck(`${customName}\n${file.name}\n${textForScan.slice(0, 5000)}`)) {
@@ -306,18 +304,76 @@ const BuilderPanel = () => {
         toast.warning("Score below 70. Review recommendations, update content, then rerun check.");
       }
     } catch (err: any) {
-      toast.error(err.message || "Final check failed");
+      const msg = err.message || "";
+      const is401 = msg.includes("non-2xx") || msg.includes("401") || msg.includes("Unauthorized");
+      toast.error(
+        is401
+          ? "AI content check service is unavailable right now. You can continue and run the full Review step with local fallback."
+          : msg || "Final check failed"
+      );
     } finally {
       setFinalChecking(false);
     }
   };
 
   const handleProceedToReview = () => {
-    if (!finalResult || finalResult.score < 70) {
-      toast.warning("Run the content check and meet the 70+ threshold before proceeding to Review.");
-      return;
+    if (!finalResult) {
+      toast.message("Proceeding to Review without AI check. You can run review from the Review section.");
+    } else if (finalResult.score < 70) {
+      toast.warning("Proceeding to Review with score below 70. Resolve findings there before Submit.");
     }
     ws.goToStep(4);
+  };
+
+  const applyAcceptedRecommendations = () => {
+    if (acceptedReviewRecommendations.length === 0) {
+      toast.warning("No accepted recommendations available. Accept items in Review first.");
+      return;
+    }
+
+    let appliedCount = 0;
+
+    updatePageBlocks((blocks) => {
+      const nextBlocks = blocks.map((block) => ({
+        ...block,
+        fields: block.fields.map((field) => {
+          let nextValue = field.value;
+
+          for (const rec of acceptedReviewRecommendations) {
+            const snippet = (rec.contentSnippet || "").trim();
+            const recommendation = rec.recommendation?.trim();
+            if (!recommendation) continue;
+
+            if (snippet && nextValue.includes(snippet) && !nextValue.includes(`[Applied recommendation] ${recommendation}`)) {
+              nextValue = `${nextValue}\n\n[Applied recommendation] ${recommendation}`;
+              appliedCount += 1;
+            }
+          }
+
+          return { ...field, value: nextValue };
+        }),
+      }));
+
+      if (appliedCount === 0) {
+        const remediationBody = acceptedReviewRecommendations
+          .map((rec, idx) => `${idx + 1}. ${rec.field}: ${rec.recommendation}`)
+          .join("\n");
+
+        nextBlocks.push({
+          id: String(Date.now()),
+          name: "Review Remediation Notes",
+          fields: [
+            { label: "Title", value: "Applied Review Recommendations", heading: true },
+            { label: "Body", value: remediationBody },
+          ],
+        });
+        appliedCount = acceptedReviewRecommendations.length;
+      }
+
+      return nextBlocks;
+    });
+
+    toast.success(`Applied ${appliedCount} accepted recommendation${appliedCount === 1 ? "" : "s"} to Builder content.`);
   };
 
   const generatePreviewHtml = useCallback(() => {
@@ -329,28 +385,32 @@ const BuilderPanel = () => {
       .filter(Boolean);
 
     let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#0F1E2D;background:#fff}
-.nav{background:linear-gradient(90deg,#001A4D,#003087);padding:14px 40px}.nav-logo{color:#fff;font-size:18px;font-weight:700}
-.hero{background:linear-gradient(135deg,#003087,#0093D0);color:#fff;padding:64px 48px;text-align:center}
-.hero h1{font-size:2.2em;font-weight:700;margin-bottom:12px}.hero p{font-size:1.05em;opacity:.88;max-width:580px;margin:0 auto 20px}
-.cta-btn{display:inline-block;background:#fff;color:#003087;padding:11px 28px;border-radius:6px;font:700 14px sans-serif}
-.section{padding:48px;max-width:960px;margin:0 auto}.section h2{font-size:1.35em;font-weight:700;color:#003087;margin-bottom:12px}
-.section p{font-size:.97em;line-height:1.75;color:#3A5570;white-space:pre-wrap}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;padding:48px;max-width:960px;margin:0 auto}
-.card{background:#EBF6FC;border:1px solid #D6EEF9;border-radius:10px;padding:20px}.card p{font-size:.92em;line-height:1.65;color:#3A5570;white-space:pre-wrap}
-.materials{max-width:960px;margin:20px auto;border:1px dashed #9dc7df;background:#f5fbff;border-radius:8px;padding:14px 16px}
-.materials h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#0b4f7a;margin-bottom:8px}
-.materials p{font-size:12px;line-height:1.6;color:#1f4f6b;margin:0 0 6px 0}
-.compliance{max-width:960px;margin:0 auto 18px auto;border:1px solid #f5c2c7;background:#fff5f5;border-radius:8px;padding:14px 16px}
-.compliance h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#b42318;margin-bottom:8px}
-.compliance p{font-size:12px;line-height:1.6;color:#7a271a;margin:0 0 6px 0}
-.footer{background:#003087;color:rgba(255,255,255,.65);text-align:center;padding:22px;font-size:12px;margin-top:48px}
-</style></head><body><div class="nav"><span class="nav-logo">Company Name</span></div>`;
+  <style>@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}body{font-family:'DM Sans',Arial,sans-serif;color:#0F1E2D;background:#F7FBFE}
+  .nav{background:linear-gradient(92deg,#001C4A 0%,#003087 56%,#00AEEF 100%);padding:12px 32px;display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,.16)}
+  .nav-logo{color:#fff;font-size:19px;font-weight:400;font-family:'DM Serif Display',Georgia,serif;letter-spacing:.02em}
+  .hero{background:linear-gradient(132deg,#003087 0%,#005EB8 52%,#00AEEF 100%);color:#fff;padding:56px 36px;text-align:center;border-bottom:4px solid #00AEEF}
+  .hero h1{font-family:'DM Serif Display',Georgia,serif;font-size:2.2em;font-weight:400;margin-bottom:10px;line-height:1.2}
+  .hero p{font-size:1.02em;opacity:.94;max-width:650px;margin:0 auto;line-height:1.7}
+  .section{padding:42px 30px;max-width:980px;margin:0 auto}
+  .section h2{font-family:'DM Serif Display',Georgia,serif;font-size:1.45em;font-weight:400;color:#003087;margin-bottom:11px;line-height:1.2}
+  .section p{font-size:.97em;line-height:1.75;color:#314B65;white-space:pre-wrap}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;padding:32px;max-width:980px;margin:0 auto}
+  .card{background:#EFF8FF;border:1px solid #D4EAF9;border-radius:12px;padding:18px;box-shadow:0 2px 8px rgba(0,48,135,.06)}
+  .card p{font-size:.92em;line-height:1.6;color:#2D4D69;white-space:pre-wrap}
+  .materials{max-width:980px;margin:14px auto;border:1px dashed #7FC7EA;background:#F2FAFF;border-radius:10px;padding:12px 14px}
+  .materials h3{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#0A4D7A;margin-bottom:7px}
+  .materials p{font-size:12px;line-height:1.6;color:#1F4F6B;margin:0 0 5px 0}
+  .compliance{max-width:980px;margin:0 auto 14px auto;border:1px solid #F1C2C5;background:#FFF7F7;border-radius:10px;padding:12px 14px}
+  .compliance h3{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#B42318;margin-bottom:7px}
+  .compliance p{font-size:12px;line-height:1.58;color:#7A271A;margin:0 0 5px 0}
+  .footer{background:#001C4A;color:rgba(255,255,255,.75);text-align:center;padding:18px;font-size:12px;margin-top:30px}
+  </style></head><body><div class="nav"><span class="nav-logo">Company Name</span></div>`;
 
     let isFirst = true;
     currentBlocks.forEach(blk => {
       if (isFirst && blk.fields.length) {
-        html += `<div class="hero"><h1>${blk.fields[0]?.value || blk.name}</h1><p>${blk.fields[1]?.value || ""}</p><a class="cta-btn">Learn More</a></div>`;
+        html += `<div class="hero"><h1>${blk.fields[0]?.value || blk.name}</h1><p>${blk.fields[1]?.value || ""}</p></div>`;
         isFirst = false;
       } else if (blk.name.toLowerCase().includes("card")) {
         html += `<div class="cards">${blk.fields.map(f => `<div class="card"><p>${f.value}</p></div>`).join("")}</div>`;
@@ -367,11 +427,9 @@ const BuilderPanel = () => {
   }, [currentBlocks, ws.currentBrief, ws.materials, complianceText]);
 
   useEffect(() => {
-    if (!previewHtml) {
-      setPreviewHtml(generatePreviewHtml());
-      setPreviewDirty(false);
-    }
-  }, [generatePreviewHtml, previewHtml]);
+    setPreviewHtml(generatePreviewHtml());
+    setPreviewDirty(false);
+  }, [generatePreviewHtml]);
 
   const reloadPreview = () => {
     setPreviewHtml(generatePreviewHtml());
@@ -381,7 +439,7 @@ const BuilderPanel = () => {
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-fade-up">
       {/* ── Top bar ── */}
-      <div className="bg-card border-b border-border px-4 py-2 flex items-center gap-2 flex-shrink-0">
+      <div className="bg-card border-b border-border px-4 py-1.5 flex items-center gap-2 flex-shrink-0">
         <button onClick={() => ws.goToStep(2)} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
           <ArrowLeft className="w-3 h-3" /> Brief
         </button>
@@ -396,26 +454,14 @@ const BuilderPanel = () => {
         </button>
 
         <button
-          onClick={reloadPreview}
-          className={cn(
-            "rounded-md px-3 py-1.5 text-xs font-semibold border flex items-center gap-1.5 transition-colors",
-            previewDirty
-              ? "border-primary text-primary bg-primary/10"
-              : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-          )}
-        >
-          Reload Preview
-        </button>
-
-        <button
           onClick={handleProceedToReview}
           className={cn(
             "rounded-md px-4 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all",
             finalResult && finalResult.score >= 70
               ? "bg-success text-success-foreground hover:opacity-90"
-              : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+              : "bg-secondary text-pf-dark border border-border hover:border-primary"
           )}
-          title={!finalResult || finalResult.score < 70 ? "Run content check (70+ required) before proceeding" : ""}
+          title={finalResult && finalResult.score >= 70 ? "" : "Review remains available even when checks are pending"}
         >
           <CheckCircle className="w-3 h-3" /> Review →
         </button>
@@ -428,18 +474,6 @@ const BuilderPanel = () => {
           {finalChecking ? "Checking…" : finalResult ? "Re-run Check" : "Run Check"}
         </button>
       </div>
-
-      {needsRerun && (
-        <div className="px-5 py-2 border-b bg-warning-light border-warning/20 text-[12px] text-warning font-semibold">
-          Content changed after your last check. Review recommendations and rerun the check before proceeding.
-        </div>
-      )}
-
-      {previewDirty && (
-        <div className="px-5 py-2 border-b bg-primary/10 border-primary/20 text-[12px] text-primary font-semibold">
-          Preview is out of date. Click Reload Preview to refresh the preview pane.
-        </div>
-      )}
 
       {/* Final check result banner */}
       {finalResult && (
@@ -463,47 +497,102 @@ const BuilderPanel = () => {
       )}
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={24} minSize={18}>
-          <div className="h-full overflow-y-auto bg-card border-r border-border p-4">
-            <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-2">Brief Context</div>
-            {ws.currentBrief ? (
-              <div className="space-y-3">
-                <div className="border border-border rounded-lg p-3 bg-secondary/30">
-                  <div className="text-[11px] font-bold text-foreground mb-1">{ws.currentBrief.projectTitle}</div>
-                  <p className="text-[12px] text-muted-foreground leading-relaxed">{ws.currentBrief.goal}</p>
-                </div>
-                <div className="border border-border rounded-lg p-3 bg-card">
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-1.5">Audience</div>
-                  <p className="text-[12px] text-foreground leading-relaxed">{ws.currentBrief.audience}</p>
-                </div>
-                <div className="border border-border rounded-lg p-3 bg-card">
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-1.5">Key Messages</div>
-                  <ul className="space-y-1.5">
-                    {ws.currentBrief.keyMessages.map((msg, idx) => (
-                      <li key={idx} className="text-[12px] text-foreground leading-relaxed">• {msg}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="border border-border rounded-lg p-3 bg-card">
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-1.5">Page Sections</div>
-                  <ul className="space-y-1.5">
-                    {ws.currentBrief.contentSections.map((section, idx) => (
-                      <li key={idx} className="text-[12px] text-foreground leading-relaxed">• {section}</li>
-                    ))}
-                  </ul>
-                </div>
+        <ResizablePanel defaultSize={52} minSize={36}>
+          <div className="h-full flex flex-col bg-secondary border-r border-border">
+            <div className="bg-pf-mist border-b border-pf-sky p-2 flex items-center gap-2 flex-shrink-0">
+              <div className="flex gap-1 mr-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-destructive/40" />
+                <div className="w-2.5 h-2.5 rounded-full bg-warning/40" />
+                <div className="w-2.5 h-2.5 rounded-full bg-success/40" />
               </div>
-            ) : (
-              <div className="text-[12px] text-muted-foreground">No brief data available yet. Go back to Brief and approve a generated brief.</div>
-            )}
+              <div className="flex-1 bg-card border border-pf-sky rounded-full px-3 py-1 text-[11px] font-semibold text-pf-dark">
+                {pages[activePage]?.name} — {(ws.currentBrief?.projectTitle || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 28)}
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPreviewMode("desktop")}
+                  className={cn(
+                    "text-[10px] font-semibold px-2 py-1 rounded border",
+                    previewMode === "desktop"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card text-muted-foreground border-border hover:border-primary hover:text-primary"
+                  )}
+                >
+                  Desktop
+                </button>
+                <button
+                  onClick={() => setPreviewMode("mobile")}
+                  className={cn(
+                    "text-[10px] font-semibold px-2 py-1 rounded border",
+                    previewMode === "mobile"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card text-muted-foreground border-border hover:border-primary hover:text-primary"
+                  )}
+                >
+                  Mobile
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 p-3 overflow-auto">
+              <div className={cn("h-full mx-auto bg-white border border-border rounded-md overflow-hidden", previewMode === "mobile" ? "max-w-[390px]" : "w-full")}>
+                <iframe ref={iframeRef} className="w-full h-full border-none bg-white" srcDoc={previewHtml} />
+              </div>
+            </div>
           </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
 
-        <ResizablePanel defaultSize={38} minSize={28}>
+        <ResizablePanel defaultSize={48} minSize={32}>
           <div className="h-full overflow-y-auto bg-card flex flex-col">
             {/* ── Page tabs ── */}
             <div className="border-b border-border bg-secondary/50 px-3 pt-2 flex-shrink-0">
+              <div className="flex flex-wrap items-center gap-2 pb-2">
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={ws.layout || "hero"}
+                    onChange={(e) => applyLayout(e.target.value)}
+                    className="bg-card border border-border rounded-md px-2 py-1 text-[11px] font-semibold outline-none focus:border-primary"
+                    title="Design layout"
+                  >
+                    {layoutOptions.map(opt => (
+                      <option key={opt.id} value={opt.id}>{opt.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={addPage}
+                    title="Add new page"
+                    className="flex items-center gap-0.5 rounded-md px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0 transition-colors border border-border bg-card"
+                  >
+                    <Plus className="w-3 h-3" /> Page
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 ml-auto min-w-[280px]">
+                  <input
+                    value={materialName}
+                    onChange={e => setMaterialName(e.target.value)}
+                    placeholder="Link name"
+                    className="bg-card border border-border rounded-md px-2 py-1 text-[11px] outline-none focus:border-primary w-[120px]"
+                  />
+                  <input
+                    value={materialUrl}
+                    onChange={e => setMaterialUrl(e.target.value)}
+                    placeholder="https://link"
+                    className="bg-card border border-border rounded-md px-2 py-1 text-[11px] outline-none focus:border-primary flex-1"
+                  />
+                  <button
+                    onClick={() => {
+                      setMaterialType("link");
+                      addBuilderMaterial();
+                    }}
+                    disabled={!materialName.trim() || !materialUrl.trim()}
+                    className="bg-primary text-primary-foreground rounded-md px-2.5 py-1 text-[11px] font-semibold disabled:opacity-40"
+                  >
+                    Add Link
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center gap-1 overflow-x-auto pb-1">
                 {pages.map((page, idx) => (
                   <div
@@ -532,13 +621,6 @@ const BuilderPanel = () => {
                     )}
                   </div>
                 ))}
-                <button
-                  onClick={addPage}
-                  title="Add new page"
-                  className="flex items-center gap-0.5 rounded-md px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0 transition-colors"
-                >
-                  <Plus className="w-3 h-3" /> Page
-                </button>
               </div>
             </div>
 
@@ -560,89 +642,27 @@ const BuilderPanel = () => {
                 </div>
               )}
 
-              {/* Layout / Design selector */}
-              <div className="mb-4 border border-border rounded-lg p-3 bg-secondary/30">
-                <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-2">Layout / Design</div>
-                <div className="flex flex-wrap gap-1.5 mb-2.5">
-                  {layoutOptions.map(opt => (
-                    <button
-                      key={opt.id}
-                      onClick={() => applyLayout(opt.id)}
-                      className={cn(
-                        "px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors",
-                        (ws.layout || "hero") === opt.id
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-card text-muted-foreground border-border hover:border-primary hover:text-primary"
-                      )}
-                    >
-                      {opt.name}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={addFeatureCard} className="text-[11px] font-semibold bg-card border border-border rounded-md px-2.5 py-1.5 hover:border-primary hover:text-primary">
-                    + Card
-                  </button>
-                  <button onClick={addSection} className="text-[11px] font-semibold bg-card border border-border rounded-md px-2.5 py-1.5 hover:border-primary hover:text-primary">
-                    + Section
-                  </button>
-                </div>
-              </div>
-
-              <div className="mb-4 border border-border rounded-lg p-3 bg-secondary/30">
-                <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/60 mb-2">Add Material</div>
-                <div className="grid grid-cols-1 gap-2">
-                  <input
-                    value={materialName}
-                    onChange={e => setMaterialName(e.target.value)}
-                    placeholder="Material name"
-                    className="w-full bg-card border border-border rounded-md px-3 py-2 text-[12px] outline-none focus:border-primary"
-                  />
-                  <div className="flex gap-2">
-                    <select
-                      value={materialType}
-                      onChange={e => setMaterialType(e.target.value as "link" | "image" | "document")}
-                      className="bg-card border border-border rounded-md px-2 py-2 text-[11px] outline-none focus:border-primary"
-                    >
-                      <option value="link">Link</option>
-                      <option value="image">Image</option>
-                      <option value="document">Document</option>
-                    </select>
-                    <input
-                      value={materialUrl}
-                      onChange={e => setMaterialUrl(e.target.value)}
-                      placeholder={materialType === "document" ? "Source description" : "https://source-url"}
-                      className="flex-1 bg-card border border-border rounded-md px-3 py-2 text-[12px] outline-none focus:border-primary"
-                    />
-                    <button
-                      onClick={addBuilderMaterial}
-                      disabled={!materialName.trim() || !materialUrl.trim()}
-                      className="bg-primary text-primary-foreground rounded-md px-3 py-2 text-[11px] font-semibold disabled:opacity-40"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => materialFileInputRef.current?.click()}
-                      className="text-[11px] font-semibold bg-card border border-border rounded-md px-2.5 py-1.5 hover:border-primary hover:text-primary"
-                    >
-                      Upload File/Image
-                    </button>
-                    <input
-                      ref={materialFileInputRef}
-                      type="file"
-                      multiple
-                      accept=".ppt,.pptx,.pdf,.csv,.doc,.docx,.txt,image/*"
-                      onChange={handleBuilderFileUpload}
-                      className="hidden"
-                    />
-                    <span className="text-[10px] text-muted-foreground">Each upload requires guideline confirmation.</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground/80">
-                    Added materials appear as placeholders in the preview and in the top materials bar.
-                  </div>
-                </div>
+              <div className="mb-4 flex gap-2">
+                <button onClick={addFeatureCard} className="text-[11px] font-semibold bg-card border border-border rounded-md px-2.5 py-1.5 hover:border-primary hover:text-primary">
+                  + Card
+                </button>
+                <button onClick={addSection} className="text-[11px] font-semibold bg-card border border-border rounded-md px-2.5 py-1.5 hover:border-primary hover:text-primary">
+                  + Section
+                </button>
+                <button
+                  onClick={() => materialFileInputRef.current?.click()}
+                  className="text-[11px] font-semibold bg-card border border-border rounded-md px-2.5 py-1.5 hover:border-primary hover:text-primary"
+                >
+                  Upload File/Image
+                </button>
+                <input
+                  ref={materialFileInputRef}
+                  type="file"
+                  multiple
+                  accept=".ppt,.pptx,.pdf,.csv,.doc,.docx,.txt,image/*"
+                  onChange={handleBuilderFileUpload}
+                  className="hidden"
+                />
               </div>
 
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground/50 mb-2">
@@ -732,50 +752,6 @@ const BuilderPanel = () => {
             </div>
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={38} minSize={30}>
-          <div className="h-full flex flex-col bg-secondary">
-            <div className="bg-secondary border-b border-border p-2 flex items-center gap-2 flex-shrink-0">
-              <div className="flex gap-1 mr-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-destructive/40" />
-                <div className="w-2.5 h-2.5 rounded-full bg-warning/40" />
-                <div className="w-2.5 h-2.5 rounded-full bg-success/40" />
-              </div>
-              <div className="flex-1 bg-card border border-border rounded-full px-3 py-1 text-[11px] font-mono text-muted-foreground">
-                {pages[activePage]?.name} — {(ws.currentBrief?.projectTitle || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 28)}
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPreviewMode("desktop")}
-                  className={cn(
-                    "text-[10px] font-semibold px-2 py-1 rounded border",
-                    previewMode === "desktop"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-card text-muted-foreground border-border hover:border-primary hover:text-primary"
-                  )}
-                >
-                  Desktop
-                </button>
-                <button
-                  onClick={() => setPreviewMode("mobile")}
-                  className={cn(
-                    "text-[10px] font-semibold px-2 py-1 rounded border",
-                    previewMode === "mobile"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-card text-muted-foreground border-border hover:border-primary hover:text-primary"
-                  )}
-                >
-                  Mobile
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 p-3 overflow-auto">
-              <div className={cn("h-full mx-auto bg-white border border-border rounded-md overflow-hidden", previewMode === "mobile" ? "max-w-[390px]" : "w-full")}>
-                <iframe ref={iframeRef} className="w-full h-full border-none bg-white" srcDoc={previewHtml} />
-              </div>
-            </div>
-          </div>
-        </ResizablePanel>
       </ResizablePanelGroup>
     </div>
   );
@@ -786,8 +762,9 @@ function buildBlocks(ws: ReturnType<typeof import("@/contexts/WorkspaceContext")
   const layout = layoutOverride || ws.layout || "hero";
   const t = b?.projectTitle || "Company Name Page";
   const g = b?.goal || "Delivering impactful digital experiences.";
-  const km = b?.keyMessages || ["Innovation", "Patient-centred", "Compliance"];
-  const cs = b?.contentSections || ["Introduction", "Benefits", "CTA"];
+  const unifiedSections = b?.contentSections?.length ? b.contentSections : (b?.keyMessages || []);
+  const km = unifiedSections.length ? unifiedSections : ["Introduction - Core context", "Benefits - Value and outcomes", "Next Steps - Action pathway"];
+  const cs = km;
 
   const layoutBlocks: Record<string, CanvasBlock[]> = {
     hero: [

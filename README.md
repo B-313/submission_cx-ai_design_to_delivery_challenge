@@ -4,6 +4,19 @@
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
 
+## Judge quick run (local)
+
+Use this if you are evaluating locally without platform secrets:
+
+```sh
+npm i
+npm run dev
+```
+
+Notes:
+- Judge Access Key is optional in the registration step.
+- Protected AI endpoints automatically fall back to local/demo behavior when unavailable, so the full judging workflow remains usable.
+
 ## How can I edit this code?
 
 There are several ways of editing your application.
