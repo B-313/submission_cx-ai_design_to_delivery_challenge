@@ -30,3 +30,6 @@ dist-ssr
 # Python cache artifacts
 __pycache__/
 *.pyc
+
+# Supabase CLI temp artifacts
+supabase/.temp/
