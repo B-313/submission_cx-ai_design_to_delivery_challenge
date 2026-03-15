@@ -115,30 +115,9 @@ function cosineSimilarity(a: number[], b: number[]) {
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
-async function createEmbedding(input: string): Promise<number[] | null> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY || !input?.trim()) return null;
-
-  try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "text-embedding-3-small",
-        input,
-      }),
-    });
-
-    if (!response.ok) return null;
-    const data = await response.json();
-    const embedding = data?.data?.[0]?.embedding;
-    return Array.isArray(embedding) ? embedding : null;
-  } catch (_) {
-    return null;
-  }
+async function createEmbedding(_input: string): Promise<number[] | null> {
+  // Groq does not provide an embeddings API; lexical fallback handles retrieval
+  return null;
 }
 
 let corpusEmbeddingPromise: Promise<EmbeddingRecord[] | null> | null = null;
