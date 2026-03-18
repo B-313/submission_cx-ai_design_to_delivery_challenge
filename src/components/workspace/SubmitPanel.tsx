@@ -10,7 +10,7 @@ interface HtmlExportMeta {
   url: string;
 }
 
-const SubmitPanel = () => {
+const SubmitPanel = ({selectedSources = []}: {selectedSources?: string[]}) => {
   const ws = useWorkspace();
   const [agreed, setAgreed] = useState(false);
   const htmlExportRef = useRef<HtmlExportMeta | null>(null);

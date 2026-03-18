@@ -12,7 +12,7 @@ const isJudgeAuthError = (message: string) => {
   return m.includes("401") || m.includes("unauthorized") || m.includes("non-2xx");
 };
 
-const ReviewPanel = () => {
+const ReviewPanel = ({selectedSources = []}: {selectedSources?: string[]}) => {
   const ws = useWorkspace();
 
   useEffect(() => {

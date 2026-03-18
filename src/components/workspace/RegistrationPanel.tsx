@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { saveJudgeAccessKey } from "@/lib/protectedInvoke";
 
-const RegistrationPanel = () => {
+const RegistrationPanel = ({selectedSources = []}: {selectedSources?: string[]}) => {
   const { goToStep, setUser } = useWorkspace();
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "", empNumber: "", department: "", country: "",

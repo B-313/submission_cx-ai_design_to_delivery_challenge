@@ -3,6 +3,7 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { evaluateMaterialSafety } from "@/lib/materialSafety";
+import SourceSnippet from "./SourceSnippet";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -259,7 +260,7 @@ function buildFallbackPieResult(briefText: string, answerSet: QAnswers, countryH
   };
 }
 
-const BriefEditorPanel = () => {
+const BriefEditorPanel = ({selectedSources = []}: {selectedSources?: string[]}) => {
   const ws = useWorkspace();
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<"input" | "questions" | "checking" | "brief" | "reviewing">("input");

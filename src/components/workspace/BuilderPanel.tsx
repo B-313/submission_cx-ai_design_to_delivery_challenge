@@ -19,7 +19,7 @@ interface Page {
   blocks: CanvasBlock[];
 }
 
-const BuilderPanel = () => {
+const BuilderPanel = ({selectedSources = []}: {selectedSources?: string[]}) => {
   const ws = useWorkspace();
   const [pages, setPages] = useState<Page[]>(() => [
     { id: "page-1", name: "Page 1", blocks: buildBlocks(ws) },

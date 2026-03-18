@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 const BRIEF_DRAFT_KEY = "company_name_brief_editor_draft_v1";
 
-const BriefDisplayPanel = () => {
+const BriefDisplayPanel = ({selectedSources = []}: {selectedSources?: string[]}) => {
   const ws = useWorkspace();
   const { currentBrief, goToStep, approvePie, setCurrentBrief, pieResult, materials } = ws;
 
