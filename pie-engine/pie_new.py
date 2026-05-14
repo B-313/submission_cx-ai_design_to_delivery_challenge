@@ -1,35 +1,3 @@
-"""
-pie_engine.py
-─────────────────────────────────────────────────────────────────────
-Prompt Intelligence Engine — Pfizer Design-to-Delivery Accelerator
-University of Liverpool Hackathon
-
-5 classifiers that run on every user brief BEFORE the LLM sees it:
-  1. Audience Classifier       (zero-shot NLI)
-  2. Jurisdiction Detector     (rule-based lookup)
-  3. Content Risk Scorer       (keyword + ML hybrid)
-  4. Brand Tone Analyser       (sentence embeddings + cosine similarity)
-  5. Readability Predictor     (Flesch-Kincaid via textstat)
-
-HOW TO RUN ON YOUR LAPTOP:
-─────────────────────────────────────────────────────────────────────
-  1. Install dependencies (one time):
-       pip install transformers sentence-transformers textstat torch flask flask-cors
-
-  2. First run downloads models automatically (~1.6GB + ~90MB).
-     They cache in ~/.cache/huggingface/ — only downloads once.
-
-  3. Import and call:
-       from pie_engine import run_pie
-       result = run_pie("page for oncology drug for doctors in Germany")
-       print(result)
-
-  4. Or run standalone to test:
-       python pie_engine.py
-
-─────────────────────────────────────────────────────────────────────
-"""
-
 import re
 import json
 import time
@@ -1084,7 +1052,7 @@ def run_pie(
 
 # ══════════════════════════════════════════════════════════════════
 #  STANDALONE TEST — run this file directly to see it work
-#  python pie_engine.py
+#  python pie_new.py
 # ══════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":

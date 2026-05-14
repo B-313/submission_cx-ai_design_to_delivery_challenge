@@ -1,12 +1,12 @@
 """
 server.py  —  Pfizer Design-to-Delivery Accelerator
-See pie_engine.py for the 5 classifiers.
+See pie_new.py for the 5 classifiers.
 Run: python server.py  (with ollama serve in another terminal)
 """
 import json, urllib.request, urllib.error, datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from pie_engine import run_pie
+from pie_new import run_pie
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
