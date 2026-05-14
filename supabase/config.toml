@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.pie-classify]
 verify_jwt = false
 
+[functions.pie-classify-v2]
+verify_jwt = false
+
 [functions.generate-brief]
 verify_jwt = false
 

@@ -944,6 +944,122 @@ def calculate_pie_score(audience: dict, jurisdiction: dict, risk: dict,
     }
 
 
+def adapt_content(generated_content: str, pie_snapshot: dict) -> dict:
+    """
+    Deterministic post-generation adaptation pass.
+
+    This is intentionally rule-based for production safety:
+      - no external API call required
+      - fully traceable edits
+      - never mutates core PIE scoring from the original brief
+    """
+    start = time.time()
+    adapted = generated_content or ""
+    original = adapted
+    changes_made = []
+    rationale = []
+
+    readability = pie_snapshot.get("readability", {})
+    tone = pie_snapshot.get("tone", {})
+    risk = pie_snapshot.get("risk", {})
+    audience_label = pie_snapshot.get("audience", {}).get("audience", "patients")
+    jurisdiction = pie_snapshot.get("jurisdiction", {})
+    risk_level = risk.get("level", "LOW")
+
+    # Censored content should not be transformed into "publishable" output.
+    if risk_level == "CENSORED":
+        return {
+            "adapted_content": adapted,
+            "changes_made": [],
+            "rationale": [
+                "Content blocked: CENSORED risk level detected from PIE pre-check.",
+                "No adaptation applied. Human review required.",
+            ],
+            "adaptation_time": round(time.time() - start, 2),
+            "post_assessment": None,
+            "blocked": True,
+        }
+
+    # 1) Readability simplification
+    if readability.get("inject_simplify"):
+        before = adapted
+        replacements = [
+            (r"\b(utilise|utilize)\b", "use"),
+            (r"\b(leverage)\b", "use"),
+            (r"\bcommence\b", "start"),
+            (r"\bapproximately\b", "about"),
+            (r"\bprior to\b", "before"),
+            (r"\b(very|extremely|highly)\s+", ""),
+        ]
+        for pattern, replacement in replacements:
+            adapted = re.sub(pattern, replacement, adapted, flags=re.IGNORECASE)
+        adapted = re.sub(r"\s{2,}", " ", adapted).strip()
+        if adapted != before:
+            changes_made.append("Simplified vocabulary and sentence structure")
+            rationale.append(readability.get("guidance", "Readability simplification requested"))
+
+    # 2) Brand tone alignment
+    if tone.get("inject_guidance"):
+        before = adapted
+        # Keep replacement scope conservative to avoid altering valid clinical meaning.
+        adapted = re.sub(
+            r"\b(revolutionary|groundbreaking|miracle|guaranteed)\b",
+            "evidence-based",
+            adapted,
+            flags=re.IGNORECASE,
+        )
+        adapted = re.sub(r"!{2,}", "!", adapted)
+        if adapted != before:
+            changes_made.append("Aligned to Pfizer brand voice (optimistic plus scientific)")
+            rationale.append(f"Top corpus match: {tone.get('top_match', 'n/a')}")
+
+    # 3) High-risk compliance guardrails
+    if risk_level == "HIGH":
+        before = adapted
+        lower = adapted.lower()
+        has_safety = ("important safety information" in lower) or ("fair balance" in lower)
+        if not has_safety:
+            adapted += "\n\nImportant Safety Information: Refer to approved prescribing information and present benefits with relevant risk context."
+
+        body = jurisdiction.get("body", "")
+        has_regulatory_note = ("no off-label" in lower) or ("approved indication" in lower)
+        if (("FDA" in body) or ("EMA" in body) or ("MHRA" in body)) and not has_regulatory_note:
+            adapted += "\nRegulatory Note: Include only approved indications and avoid off-label claims."
+
+        if adapted != before:
+            changes_made.append("Added compliance guardrails for high-risk content")
+            rationale.append("High-risk classification triggered mandatory safety and regulatory framing")
+
+    post_assessment = None
+    if adapted != original and adapted.strip():
+        adapted_risk = score_risk(adapted, jurisdiction)
+        adapted_tone = analyse_tone(adapted)
+        adapted_readability = predict_readability(adapted, audience_label)
+        adapted_scoring = calculate_pie_score(
+            pie_snapshot.get("audience", {}),
+            jurisdiction,
+            adapted_risk,
+            adapted_tone,
+            adapted_readability,
+        )
+        post_assessment = {
+            "pie_score_estimate": adapted_scoring["pie_score"],
+            "pie_grade_estimate": adapted_scoring["grade"],
+            "risk": adapted_risk,
+            "tone": adapted_tone,
+            "readability": adapted_readability,
+        }
+
+    return {
+        "adapted_content": adapted,
+        "changes_made": changes_made,
+        "rationale": rationale,
+        "adaptation_time": round(time.time() - start, 2),
+        "post_assessment": post_assessment,
+        "blocked": False,
+    }
+
+
 # ══════════════════════════════════════════════════════════════════
 #  MASTER FUNCTION — run_pie()
 #  This is the single function you call from server.py
@@ -957,6 +1073,7 @@ def run_pie(
     build_type:   str  = "",
     language:     str  = "English",
     user_name:    str  = "",
+    initial_generated: str = "",
 ) -> dict:
     """
     Run all 5 PIE classifiers on a brief and return the full results.
@@ -968,6 +1085,7 @@ def run_pie(
         build_type:  What they're building (e.g. "Webpage", "Landing Page")
         language:    Primary language (e.g. "English", "French")
         user_name:   User's name for personalised prompts
+        initial_generated: Optional generated copy to adapt after PIE classification
 
     Returns a dict with:
         pie_score:       int (0–100)
@@ -977,6 +1095,7 @@ def run_pie(
         tone:            dict (Classifier 4 output)
         readability:     dict (Classifier 5 output)
         enriched_prompt: str (the prompt to send to the LLM)
+        adaptation:      dict | None (optional post-generation adaptation result)
         processing_time: float (seconds taken)
         audit_log:       dict (everything needed for compliance audit)
     """
@@ -1014,6 +1133,20 @@ def run_pie(
         brief_text, audience, jurisdiction, risk, tone, readability, user_context
     )
 
+    adaptation = None
+    if isinstance(initial_generated, str) and initial_generated.strip():
+        adaptation = adapt_content(
+            initial_generated,
+            {
+                "audience": audience,
+                "jurisdiction": jurisdiction,
+                "risk": risk,
+                "tone": tone,
+                "readability": readability,
+                "pie_score": scoring["pie_score"],
+            },
+        )
+
     elapsed = round(time.time() - start, 2)
     print(f"[PIE] Done in {elapsed}s — PIE score: {scoring['pie_score']}/100 ({scoring['grade']})")
 
@@ -1031,6 +1164,7 @@ def run_pie(
             "readability":  readability,
         },
         "pie_score":        scoring["pie_score"],
+        "adaptation_applied": bool(adaptation),
         "processing_time":  elapsed,
     }
 
@@ -1045,6 +1179,7 @@ def run_pie(
         "tone":             tone,
         "readability":      readability,
         "enriched_prompt":  enriched_prompt,
+        "adaptation":       adaptation,
         "processing_time":  elapsed,
         "audit_log":        audit_log,
     }
