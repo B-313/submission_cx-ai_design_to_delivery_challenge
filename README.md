@@ -48,6 +48,12 @@ npm run build
 npm run preview
 ```
 
+PIE Python requirements:
+
+```sh
+.python.exe -m pip install -r pie-engine/requirements
+```
+
 ## Required Environment Variables
 
 Frontend (`.env`):
