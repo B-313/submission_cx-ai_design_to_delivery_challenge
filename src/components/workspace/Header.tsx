@@ -94,11 +94,11 @@ const Header = () => {
         <span className="font-serif text-[16px] text-pf-dark tracking-wide leading-none">Company Name</span>
         <div className="w-px h-[14px] bg-border" />
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide whitespace-nowrap max-md:hidden">
-          Design-to-Delivery Accelerator <span className="text-pf-dark font-semibold">· Prompt Intelligence Engine</span>
+          CXI+AI Project <span className="text-pf-dark font-semibold">· Prompt Intelligence Engine</span>
         </span>
         <div className="ml-auto flex items-center gap-2">
           <span className="bg-pf-mist border border-pf-sky rounded-full px-2 py-0.5 text-[10px] font-semibold text-pf-dark whitespace-nowrap">
-            CXI+AI · University of Liverpool
+            Unpublished Work For Hackathon
           </span>
           {user && (
             <>
