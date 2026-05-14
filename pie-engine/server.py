@@ -47,7 +47,7 @@ def classify():
     Response: full classifier outputs + enriched_prompt + pie_score
     """
     body = request.get_json() or {}
-    brief = body.get("brief", "").strip()
+    brief = (body.get("brief_text") or body.get("brief") or "").strip()
     if not brief:
         return jsonify({"error": "brief is required"}), 400
     try:
