@@ -48,7 +48,7 @@ const ReviewPanel = () => {
       const msg = err?.message || "Review failed";
       toast.error(
         isJudgeAuthError(msg)
-          ? "AI review requires a valid judge access key and live cloud services."
+          ? "AI review requires live cloud services. Provide an API key to enable advanced features."
           : msg
       );
     } finally {

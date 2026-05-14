@@ -4,21 +4,33 @@ declare const Deno: {
   };
 };
 
-export function requireJudgeAccess(req: Request, corsHeaders: Record<string, string>) {
-  const expected = Deno.env.get("judge_access");
-  if (!expected) {
-    return new Response(JSON.stringify({ error: "Server misconfiguration: judge_access is not set" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+export function getApiKey(req: Request): string | null {
+  // Check for user-provided API key
+  const userKey = req.headers.get("x-api-key")?.trim();
+  if (userKey) {
+    return userKey;
+  }
+  return null;
+}
+
+export function requireApiKey(req: Request, corsHeaders: Record<string, string>) {
+  // If user provided an API key, validate it
+  const provided = req.headers.get("x-api-key")?.trim();
+  if (!provided) {
+    // No API key provided is acceptable; functions can use default/demo mode
+    return null;
   }
 
-  const provided = req.headers.get("x-judge-access-key")?.trim();
-  if (!provided || provided !== expected) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  // Optional: Validate against a list of valid keys if available
+  const validKeys = Deno.env.get("valid_api_keys");
+  if (validKeys) {
+    const keys = validKeys.split(",").map(k => k.trim());
+    if (!keys.includes(provided)) {
+      return new Response(JSON.stringify({ error: "Invalid API key" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   }
 
   return null;

@@ -75,18 +75,21 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 
 Notes:
 
-- Registration requires Judge Access Key.
-- Protected function calls send `x-judge-access-key` header.
+- Registration no longer requires a pre-shared judge access key.
+- Users can optionally provide their own API key at registration to enable protected AI endpoints.
+- Without an API key, the app uses default demo capabilities.
+- Protected function calls send `x-api-key` header if a key is provided.
 
 ## How To Use The App (Quick Flow)
 
-1. Register user details and enter Judge Access Key (`judge_access`).
-2. Fill ideation questionnaire (build type, audience, region).
-3. Enter project prompt and clinical/regulatory details.
-4. Click `Generate Brief`.
-5. Approve brief and move to Builder.
-6. Run/complete Review; accept or decline findings.
-7. Proceed to Submit; agree to terms and submit.
+1. Register with your user details (all fields required).
+2. Optional: Enter your own API key if you have one, or leave blank to use demo mode.
+3. Fill ideation questionnaire (build type, audience, region).
+4. Enter project prompt and clinical/regulatory details.
+5. Click `Generate Brief`.
+6. Approve brief and move to Builder.
+7. Run/complete Review; accept or decline findings.
+8. Proceed to Submit; agree to terms and submit.
 
 ## Testing
 

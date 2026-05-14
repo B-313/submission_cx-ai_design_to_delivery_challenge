@@ -6,11 +6,11 @@ test("PIE and RAG live flow generates a brief", async ({ page }) => {
   await page.goto("/");
 
   await page.getByPlaceholder("Jane", { exact: true }).fill("Demo");
-  await page.getByPlaceholder("Smith", { exact: true }).fill("Judge");
-  await page.getByPlaceholder("jane.smith@company.com", { exact: true }).fill("demo.judge@example.com");
+  await page.getByPlaceholder("Smith", { exact: true }).fill("User");
+  await page.getByPlaceholder("jane.smith@company.com", { exact: true }).fill("demo.user@example.com");
   await page.getByPlaceholder("PFZ-00000", { exact: true }).fill("EMP-777");
   await page.getByPlaceholder("Digital Marketing", { exact: true }).fill("Marketing");
-  await page.getByPlaceholder("Provided by event host", { exact: true }).fill("judge_access");
+  // API key is now optional - skip filling it to test demo mode
   await page.getByRole("combobox").selectOption("United Kingdom");
   await page.getByRole("button", { name: /Continue to Workspace/i }).click();
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { saveJudgeAccessKey } from "@/lib/protectedInvoke";
+import { saveApiKey } from "@/lib/protectedInvoke";
 
 const RegistrationPanel = () => {
   const { goToStep, setUser } = useWorkspace();
@@ -11,12 +11,12 @@ const RegistrationPanel = () => {
 
   const update = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
-  const canSubmit = form.firstName && form.lastName && form.email && form.empNumber && form.department && form.country && judgeAccessKey.trim().length > 0;
+  const canSubmit = form.firstName && form.lastName && form.email && form.empNumber && form.department && form.country;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
     // Persist key so protected endpoints can use it across the full workflow.
-    saveJudgeAccessKey(judgeAccessKey, true);
+    saveApiKey(judgeAccessKey, true);
     setUser(form as any);
     goToStep(1);
   };
@@ -59,15 +59,15 @@ const RegistrationPanel = () => {
         </div>
 
         <div className="mb-2">
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Judge Access Key</label>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">API Key <span className="text-muted-foreground/70">(Optional)</span></label>
           <input
             type="password"
             value={judgeAccessKey}
             onChange={e => setJudgeAccessKey(e.target.value)}
-            placeholder="Provided by event host"
+            placeholder="Enter your own API key or leave blank"
             className="w-full bg-secondary border-[1.5px] border-border rounded-md px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-primary focus:bg-card transition-colors"
           />
-          <p className="text-[11px] text-muted-foreground mt-1">Required once at registration and then applied across the full workflow.</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Optional. Provide your own API key to enable protected AI endpoints, or leave blank to use default demo capabilities.</p>
         </div>
 
         <button
