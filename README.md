@@ -23,7 +23,7 @@ Prompt Intelligence Engine for pharma web content delivery. The app takes a proj
 
 ## How To Open Locally
 
-Access key: Please View Design-to-Delivery-Submission.pdf
+Access key document removed from repository.
 
 Requirements:
 
